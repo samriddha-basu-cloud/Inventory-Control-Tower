@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Rebalancing{% endblock %}
+{% block content %}
+<div class="ict-section-title">Network Rebalancing Engine</div>
+<div class="ict-section-sub">Matches surplus nodes to deficit nodes for the same SKU against a target days-of-supply.</div>
+
+<form method="post" class="ict-card mb-4 d-flex gap-2 align-items-end">
+  <div>
+    <label class="form-label small">Target days of supply</label>
+    <input type="number" name="target_dos_days" value="14" class="form-control form-control-sm" style="width:120px">
+  </div>
+  <button class="btn btn-sm btn-primary">Find Transfer Opportunities</button>
+</form>
+
+{% if result %}
+<div class="ict-card">
+  <table class="table table-ict mb-0">
+    <thead><tr><th>SKU</th><th>Source</th><th>Destination</th><th>Quantity</th><th>Transit</th><th>Cost</th><th>Why</th></tr></thead>
+    <tbody>
+      {% for t in result %}
+      <tr>
+        <td>{{ t.item }}</td><td>{{ t.source }}</td><td>{{ t.destination }}</td>
+        <td>{{ t.quantity | num }}</td><td>{{ t.transit_days }} days</td><td>{{ t.transport_cost | money }}</td>
+        <td class="small text-muted">{{ t.reason }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" class="text-muted">No transfer opportunities found at this target.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p class="text-muted small mt-2">Recommendations were also written to the Recommendations queue for approval.</p>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Report Center{% endblock %}
+{% block content %}
+<div class="ict-section-title">Report Center</div>
+<div class="ict-section-sub">Export a multi-sheet workbook covering the executive summary through raw transactions and methodology reference.</div>
+
+<div class="ict-card" style="max-width:520px;">
+  <div class="fw-bold">Full Excel Export</div>
+  <p class="small text-muted">README, Executive Summary, Inventory Position, Aging, ABC/XYZ, Safety Stock, Stockout Risk,
+    Excess, Supplier, Alerts, Methodology.</p>
+  <a href="{{ url_for('reports.excel_export') }}" class="btn btn-sm btn-primary">Download .xlsx</a>
+</div>
+
+<p class="text-muted small mt-4">PDF report generation is not yet implemented in this build (see docs/known-limitations.md).</p>
+{% endblock %}

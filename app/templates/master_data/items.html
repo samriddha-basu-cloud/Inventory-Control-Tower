@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Items{% endblock %}
+{% block content %}
+<div class="ict-section-title">Items</div>
+<div class="ict-card">
+<table class="table table-ict table-hover mb-0">
+  <thead><tr><th>SKU</th><th>Name</th><th>Category</th><th>Supplier</th><th>Unit Cost</th><th>Price</th><th>MOQ</th><th>Order Mult.</th><th>VED</th></tr></thead>
+  <tbody>
+    {% for it in items %}
+    <tr>
+      <td><a href="{{ url_for('inventory.item_detail', sku=it.sku) }}">{{ it.sku }}</a></td>
+      <td>{{ it.name }}</td><td>{{ it.category }}</td>
+      <td>{{ it.primary_supplier.name if it.primary_supplier else '—' }}</td>
+      <td>{{ it.unit_cost | money }}</td><td>{{ it.unit_price | money }}</td>
+      <td>{{ it.moq | num }}</td><td>{{ it.order_multiple | num }}</td><td>{{ it.ved_class }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}ABC × XYZ Matrix{% endblock %}
+{% block content %}
+<div class="ict-section-title">ABC × XYZ Segmentation Matrix</div>
+<div class="ict-section-sub">Total network annual consumption value: {{ total_value | money }}. Policy recommendations are configurable defaults, not fixed rules.</div>
+
+<div class="row row-cols-3 g-3">
+  {% for abc in ['A','B','C'] %}
+    {% for xyz in ['X','Y','Z'] %}
+      {% set seg = abc ~ xyz %}
+      {% set cell = matrix.get(seg, {'sku_count':0,'value':0,'policy':''}) %}
+      <div class="col">
+        <div class="ict-card matrix-cell seg-{{ abc }}">
+          <div class="d-flex justify-content-between">
+            <div class="fw-bold">{{ seg }}</div>
+            <span class="chip chip-{{ xyz|lower }}">{{ xyz }}</span>
+          </div>
+          <div class="text-muted small mb-1">{{ cell.sku_count }} SKUs · {{ cell.value | money }}</div>
+          <div class="small">{{ cell.policy }}</div>
+        </div>
+      </div>
+    {% endfor %}
+  {% endfor %}
+</div>
+{% endblock %}

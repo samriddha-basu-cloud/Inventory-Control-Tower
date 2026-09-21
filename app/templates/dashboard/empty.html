@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="ict-card text-center py-5">
+  <h2>Welcome to Inventory Control Tower</h2>
+  <p class="text-muted mb-4">No data loaded yet. Launch the synthetic demo network to explore visibility, risk,<br>
+  optimization, allocation, scenarios and the alert → action workflow end to end.</p>
+  <form method="post" action="{{ url_for('main.launch_demo') }}">
+    <button class="btn btn-primary btn-lg">Launch Demo</button>
+  </form>
+  <p class="text-muted small mt-3">This loads a synthetic multi-echelon FMCG network (suppliers → plant → central DC →
+  regional DCs → stores) with a pre-built supplier-delay disruption story.</p>
+</div>
+{% endblock %}

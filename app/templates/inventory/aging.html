@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Aging & Expiry{% endblock %}
+{% block content %}
+<div class="ict-section-title">Inventory Aging &amp; Expiry Management</div>
+<div class="ict-section-sub">FEFO-relevant view: near-expiry and expired lots are flagged and excluded from ATP by policy.</div>
+
+<div class="row g-3 mb-4">
+  {% for bucket, v in summary.items() %}
+  <div class="col-md-2">
+    <div class="ict-card text-center">
+      <div class="ict-kpi-label">{{ bucket }} days</div>
+      <div class="ict-kpi-value" style="font-size:18px">{{ v.value | money }}</div>
+      <div class="ict-kpi-sub">{{ v.quantity | num }} units</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<div class="ict-card">
+  <div class="fw-bold mb-2">Near-Expiry / Expired Batches</div>
+  <table class="table table-ict mb-0">
+    <thead><tr><th>SKU</th><th>Location</th><th>Batch</th><th>Expiry</th><th>Qty</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for row in expiring %}
+      <tr>
+        <td>{{ row.item.sku }}</td>
+        <td>{{ row.location.code }}</td>
+        <td>{{ row.batch }}</td>
+        <td>{{ row.expiry_date }}</td>
+        <td>{{ row.quantity | num }}</td>
+        <td><span class="badge {{ 'bg-danger' if row.status=='EXPIRED' else 'bg-warning text-dark' }}">{{ row.status }}</span></td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" class="text-muted">No near-expiry or expired batches.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

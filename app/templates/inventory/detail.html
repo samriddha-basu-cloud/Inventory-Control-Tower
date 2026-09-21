@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}{{ item.sku }}{% endblock %}
+{% block content %}
+<div class="ict-section-title">{{ item.sku }} — {{ item.name }}</div>
+<div class="ict-section-sub">{{ item.category }} · Supplier: {{ item.primary_supplier.name if item.primary_supplier else '—' }} ·
+  Unit cost {{ item.unit_cost | money }} · Price {{ item.unit_price | money }} · MOQ {{ item.moq | num }} · Order multiple {{ item.order_multiple | num }}</div>
+
+<div id="demand-chart" class="ict-card mb-4" style="height:280px;"></div>
+
+<div class="ict-card">
+  <div class="fw-bold mb-2">Position by Location</div>
+  <table class="table table-ict mb-0">
+    <thead><tr><th>Location</th><th>On Hand</th><th>Available</th><th>Allocated</th><th>In Transit</th><th>On Order</th>
+      <th>Inv. Position</th><th>ATP</th><th>Safety Stock</th><th>DOS</th><th>Stockout Risk</th></tr></thead>
+    <tbody>
+      {% for row in location_rows %}
+      <tr>
+        <td>{{ row.location.code }}</td>
+        <td>{{ row.status_quantities.get('ON_HAND', 0) | num }}</td>
+        <td>{{ (row.status_quantities.get('ON_HAND', 0) - row.status_quantities.get('ALLOCATED',0) - row.status_quantities.get('QUARANTINED',0)) | num }}</td>
+        <td>{{ row.status_quantities.get('ALLOCATED', 0) | num }}</td>
+        <td>{{ row.status_quantities.get('IN_TRANSIT', 0) | num }}</td>
+        <td>{{ row.status_quantities.get('ON_ORDER', 0) | num }}</td>
+        <td>{{ row.position.inventory_position | num }}</td>
+        <td>{{ row.atp.atp | num }}</td>
+        <td>{{ row.policy.effective_safety_stock | round(0) if row.policy else '—' }}</td>
+        <td>{{ row.days_of_supply if row.days_of_supply is not none else '—' }}</td>
+        <td>
+          {% if row.risk %}
+          <span class="badge {{ 'bg-danger' if row.risk.probability_pct >= 50 else ('bg-warning text-dark' if row.risk.probability_pct >= 20 else 'bg-success') }}">
+            {{ row.risk.probability_pct }}%
+          </span>
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+  const labels = {{ chart_labels | tojson }};
+  const values = {{ chart_values | tojson }};
+  Plotly.newPlot('demand-chart', [{x: labels, y: values, type: 'scatter', mode: 'lines', line:{color:'#2563eb'}}], {
+    title: 'Network Demand History (90 days)', margin: {t:40,l:40,r:10,b:30}
+  }, {responsive: true});
+</script>
+{% endblock %}

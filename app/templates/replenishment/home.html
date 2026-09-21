@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Replenishment{% endblock %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-start mb-2">
+  <div>
+    <div class="ict-section-title">Replenishment Control Center</div>
+    <div class="ict-section-sub">{{ recs|length }} of {{ total_skus }} SKU-locations currently trigger a recommended order.</div>
+  </div>
+  <form method="post" action="{{ url_for('replenishment.generate') }}">
+    <button class="btn btn-sm btn-primary">Generate &amp; Send to Approval</button>
+  </form>
+</div>
+
+<div class="ict-card">
+<table class="table table-ict mb-0">
+  <thead><tr><th>SKU</th><th>Location</th><th>Policy</th><th>Position</th><th>Raw Qty</th><th>Recommended Qty</th></tr></thead>
+  <tbody>
+    {% for r in recs %}
+    <tr>
+      <td>{{ r.item }}</td><td>{{ r.location }}</td><td>{{ r.policy }}</td>
+      <td>{{ r.inventory_position | num }}</td>
+      <td>{{ r.raw_quantity | round(0) if r.raw_quantity else '—' }}</td>
+      <td><strong>{{ r.recommended_quantity | num }}</strong></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-muted">No replenishment triggers right now.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

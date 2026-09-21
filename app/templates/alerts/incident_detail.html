@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Incident #{{ incident.id }}{% endblock %}
+{% block content %}
+<div class="ict-section-title">{{ incident.title }}</div>
+<div class="ict-section-sub">Opened {{ incident.created_at.strftime('%d %b %Y %H:%M') }} · Status: {{ incident.status }}</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-md-6">
+    <div class="ict-card">
+      <div class="fw-bold small text-muted">OBSERVED CAUSE (from data)</div>
+      <p>{{ incident.root_cause_observed or '—' }}</p>
+      <div class="fw-bold small text-muted">LIKELY CAUSE (unconfirmed)</div>
+      <p class="mb-0">{{ incident.root_cause_likely or '—' }}</p>
+    </div>
+  </div>
+  <div class="col-md-6">
+    <div class="ict-card">
+      <div class="ict-kpi-label">Financial Impact</div>
+      <div class="ict-kpi-value">{{ incident.financial_impact | money }}</div>
+      <div class="ict-kpi-sub">{{ incident.affected_sku_count }} SKUs · {{ incident.affected_location_count }} locations</div>
+    </div>
+  </div>
+</div>
+
+<div class="ict-card mb-3">
+  <div class="fw-bold mb-2">Related Alerts</div>
+  <table class="table table-ict mb-0">
+    <thead><tr><th>Sev</th><th>SKU</th><th>Location</th><th>Impact</th><th>Message</th></tr></thead>
+    <tbody>
+      {% for a in related_alerts %}
+      <tr>
+        <td><span class="badge badge-{{ a.severity|lower }}">{{ a.severity }}</span></td>
+        <td>{{ a.item.sku if a.item else '—' }}</td>
+        <td>{{ a.location.code if a.location else '—' }}</td>
+        <td>{{ a.financial_impact | money }}</td>
+        <td class="small">{{ a.message }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="ict-card">
+  <div class="fw-bold mb-2">Suggested next step</div>
+  <p class="small text-muted mb-2">Use the Rebalancing engine to check whether any surplus node can cover the affected SKUs
+    while the delayed purchase order is in flight.</p>
+  <a href="{{ url_for('optimization.rebalancing') }}" class="btn btn-sm btn-primary">Open Rebalancing</a>
+</div>
+{% endblock %}

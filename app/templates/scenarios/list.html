@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Scenarios{% endblock %}
+{% block content %}
+<div class="ict-section-title">Digital Twin / What-If Scenarios</div>
+<div class="ict-section-sub">Scenarios run against a snapshot of live data and never mutate the live plan.</div>
+
+<form method="post" action="{{ url_for('scenarios.run') }}" class="ict-card mb-4">
+  <div class="row g-2 align-items-end">
+    <div class="col-md-3"><label class="form-label small">Scenario name</label>
+      <input name="name" class="form-control form-control-sm" placeholder="e.g. Demand +15% peak season"></div>
+    <div class="col-md-2"><label class="form-label small">Demand change %</label>
+      <input type="number" step="1" name="demand_change_pct" value="0" class="form-control form-control-sm"></div>
+    <div class="col-md-2"><label class="form-label small">Lead time Δ (days)</label>
+      <input type="number" step="1" name="lead_time_delta_days" value="0" class="form-control form-control-sm"></div>
+    <div class="col-md-2"><label class="form-label small">Safety stock change %</label>
+      <input type="number" step="1" name="safety_stock_change_pct" value="0" class="form-control form-control-sm"></div>
+    <div class="col-md-2"><label class="form-label small">Service level target %</label>
+      <input type="number" step="0.5" name="service_level_target_pct" placeholder="optional" class="form-control form-control-sm"></div>
+    <div class="col-md-1"><button class="btn btn-sm btn-primary w-100">Run</button></div>
+  </div>
+</form>
+
+<div class="ict-card">
+<table class="table table-ict mb-0">
+  <thead><tr><th>Name</th><th>Created</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for s in scenarios %}
+    <tr>
+      <td>{{ s.name }}</td>
+      <td class="small text-muted">{{ s.created_at.strftime('%d %b %H:%M') }}</td>
+      <td>{{ s.status }}</td>
+      <td><a href="{{ url_for('scenarios.detail', scenario_id=s.id) }}" class="btn btn-sm btn-outline-primary">View</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4" class="text-muted">No scenarios run yet.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

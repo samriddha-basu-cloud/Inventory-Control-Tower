@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Customers{% endblock %}
+{% block content %}
+<div class="ict-section-title">Customers</div>
+<div class="ict-card">
+<table class="table table-ict mb-0">
+  <thead><tr><th>Code</th><th>Name</th><th>Segment</th><th>Priority Weight</th><th>Region</th><th>SLA Target</th></tr></thead>
+  <tbody>
+    {% for c in customers %}
+    <tr>
+      <td>{{ c.code }}</td><td>{{ c.name }}</td><td>{{ c.segment }}</td>
+      <td>{{ c.priority_weight }}</td><td>{{ c.region }}</td><td>{{ c.service_level_target_pct }}%</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

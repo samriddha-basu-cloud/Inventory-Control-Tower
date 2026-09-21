@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Suppliers{% endblock %}
+{% block content %}
+<div class="ict-section-title">Supplier Control Tower</div>
+<div class="ict-section-sub">Risk score: 40% OTIF gap, 30% lead-time variability, 20% single-source, 10% defect rate.</div>
+<div class="ict-card">
+<table class="table table-ict mb-0">
+  <thead><tr><th>Code</th><th>Name</th><th>Country</th><th>OTIF %</th><th>Lead Time (mean/std)</th><th>Defect %</th><th>Single Source</th><th>Risk</th></tr></thead>
+  <tbody>
+    {% for row in rows %}
+    {% set s = row.supplier %}
+    <tr>
+      <td>{{ s.code }}</td><td>{{ s.name }}</td><td>{{ s.country }}</td><td>{{ s.otif_pct }}%</td>
+      <td>{{ s.lead_time_mean_days }} / {{ s.lead_time_std_days }} days</td>
+      <td>{{ s.defect_rate_pct }}%</td>
+      <td>{{ 'Yes' if s.single_source_risk else 'No' }}</td>
+      <td><span class="badge {{ 'bg-danger' if row.risk.band=='HIGH' else ('bg-warning text-dark' if row.risk.band=='MEDIUM' else 'bg-success') }}">{{ row.risk.band }} ({{ row.risk.score }})</span></td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

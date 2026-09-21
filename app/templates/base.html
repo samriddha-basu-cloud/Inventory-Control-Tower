@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ app_short }}{% endblock %} · {{ app_name }}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+<div class="ict-shell">
+  <nav class="ict-sidebar">
+    <div class="brand">
+      <div class="name">🗼 {{ app_name }}</div>
+      <div class="tag">{{ tagline }}</div>
+    </div>
+    <div class="ict-nav">
+      <a href="{{ url_for('dashboard.control_tower') }}" class="{{ 'active' if request.endpoint == 'dashboard.control_tower' }}">Control Tower</a>
+
+      <div class="section-label">Inventory</div>
+      <a href="{{ url_for('inventory.item_list') }}" class="{{ 'active' if request.endpoint == 'inventory.item_list' }}">Inventory Explorer</a>
+      <a href="{{ url_for('inventory.abc_xyz_matrix') }}" class="{{ 'active' if request.endpoint == 'inventory.abc_xyz_matrix' }}">ABC × XYZ Matrix</a>
+      <a href="{{ url_for('inventory.aging_view') }}" class="{{ 'active' if request.endpoint == 'inventory.aging_view' }}">Aging &amp; Expiry</a>
+
+      <div class="section-label">Network</div>
+      <a href="{{ url_for('network.network_map') }}" class="{{ 'active' if request.endpoint == 'network.network_map' }}">Network Map</a>
+      <a href="{{ url_for('network.heatmap') }}" class="{{ 'active' if request.endpoint == 'network.heatmap' }}">Inventory Heatmap</a>
+
+      <div class="section-label">Plan &amp; Optimize</div>
+      <a href="{{ url_for('replenishment.home') }}" class="{{ 'active' if request.endpoint == 'replenishment.home' }}">Replenishment</a>
+      <a href="{{ url_for('optimization.home') }}" class="{{ 'active' if request.endpoint == 'optimization.home' }}">Optimization</a>
+      <a href="{{ url_for('optimization.meio') }}" class="{{ 'active' if request.endpoint == 'optimization.meio' }}">MEIO</a>
+      <a href="{{ url_for('optimization.rebalancing') }}" class="{{ 'active' if request.endpoint == 'optimization.rebalancing' }}">Rebalancing</a>
+      <a href="{{ url_for('allocation.home') }}" class="{{ 'active' if request.endpoint == 'allocation.home' }}">Allocation</a>
+      <a href="{{ url_for('scenarios.list_scenarios') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('scenarios.') }}">Scenarios / Digital Twin</a>
+
+      <div class="section-label">Exceptions</div>
+      <a href="{{ url_for('alerts.workbench') }}" class="{{ 'active' if request.endpoint == 'alerts.workbench' }}">Exception Workbench</a>
+      <a href="{{ url_for('alerts.incidents') }}" class="{{ 'active' if request.endpoint and 'incident' in request.endpoint }}">Incidents</a>
+      <a href="{{ url_for('alerts.recommendations') }}" class="{{ 'active' if request.endpoint == 'alerts.recommendations' }}">Recommendations &amp; Approvals</a>
+
+      <div class="section-label">Data &amp; Reports</div>
+      <a href="{{ url_for('master_data.home') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('master_data.') }}">Master Data</a>
+      <a href="{{ url_for('reports.home') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('reports.') }}">Report Center</a>
+    </div>
+  </nav>
+
+  <div class="ict-main">
+    <div class="ict-topbar">
+      <form class="position-relative" style="width:360px" onsubmit="return false;">
+        <input id="ict-search-input" type="text" class="form-control form-control-sm" placeholder="Search SKU, supplier, PO… (Ctrl+K)">
+        <div id="ict-search-results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:20; max-height:320px; overflow:auto;"></div>
+      </form>
+      <div class="ms-auto d-flex align-items-center gap-2">
+        <form method="post" action="{{ url_for('main.launch_demo') }}">
+          <button class="btn btn-sm btn-primary">Launch Demo</button>
+        </form>
+        <span class="text-muted small">planner@demo.org</span>
+      </div>
+    </div>
+
+    <div class="ict-content">
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="alert alert-{{ 'danger' if category == 'danger' else category }} alert-dismissible fade show py-2" role="alert">
+              {{ message }}
+              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            </div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      {% block content %}{% endblock %}
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.33.0/plotly.min.js"></script>
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

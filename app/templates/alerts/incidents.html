@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Incidents{% endblock %}
+{% block content %}
+<div class="ict-section-title">Incident Management</div>
+<div class="ict-section-sub">Related alerts are clustered into a single incident with one root-cause narrative, instead of dozens of independent SKU alerts.</div>
+
+<div class="ict-card">
+<table class="table table-ict mb-0">
+  <thead><tr><th>Title</th><th>Root Cause (Observed)</th><th>Affected</th><th>Financial Impact</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+    {% for inc in incidents %}
+    <tr>
+      <td>{{ inc.title }}</td>
+      <td class="small">{{ inc.root_cause_observed }}</td>
+      <td>{{ inc.affected_sku_count }} SKUs / {{ inc.affected_location_count }} nodes</td>
+      <td>{{ inc.financial_impact | money }}</td>
+      <td>{{ inc.status }}</td>
+      <td><a href="{{ url_for('alerts.incident_detail', incident_id=inc.id) }}" class="btn btn-sm btn-outline-primary">Open</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="6" class="text-muted">No incidents.</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endblock %}

@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Compare Scenarios{% endblock %}
+{% block content %}
+<div class="ict-section-title">Scenario Comparison</div>
+
+<form method="get" class="ict-card mb-4">
+  <label class="form-label small">Select scenarios to compare</label>
+  <select name="ids" class="form-select" multiple size="6" onchange="this.form.submit()">
+    {% for s in all_scenarios %}
+    <option value="{{ s.id }}" {{ 'selected' if s.id in ids }}>{{ s.name }} ({{ s.created_at.strftime('%d %b %H:%M') }})</option>
+    {% endfor %}
+  </select>
+  <div class="small text-muted mt-1">Ctrl/Cmd-click to select multiple.</div>
+</form>
+
+{% if comparison %}
+<div class="ict-card">
+  <table class="table table-ict mb-0">
+    <thead><tr><th>Scenario</th><th>Assumptions</th><th>Safety Stock Value</th><th>Stockout Risk Count</th></tr></thead>
+    <tbody>
+      {% for c in comparison %}
+      <tr>
+        <td>{{ c.name }}</td>
+        <td class="small">{{ c.assumptions }}</td>
+        <td>{{ c.safety_stock_value | money }}</td>
+        <td>{{ c.stockout_risk_count }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}{{ scenario.name }}{% endblock %}
+{% block content %}
+<div class="ict-section-title">{{ scenario.name }}</div>
+<div class="ict-section-sub">Assumptions: {{ assumptions }}</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="ict-kpi-label">Baseline Safety Stock Value</div>
+      <div class="ict-kpi-value">{{ results.baseline.safety_stock_value | money }}</div>
+      <div class="ict-kpi-sub">{{ results.baseline.sku_locations_at_stockout_risk }} SKU-locations at stockout risk</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="ict-kpi-label">Scenario Safety Stock Value</div>
+      <div class="ict-kpi-value">{{ results.scenario.safety_stock_value | money }}</div>
+      <div class="ict-kpi-sub">{{ results.scenario.sku_locations_at_stockout_risk }} SKU-locations at stockout risk</div>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="ict-kpi-label">Delta</div>
+      <div class="ict-kpi-value">{{ results.delta.working_capital_change | money }}</div>
+      <div class="ict-kpi-sub">Stockout risk change: {{ results.delta.stockout_risk_change }}</div>
+    </div>
+  </div>
+</div>
+
+<div class="ict-card">
+  <div class="fw-bold mb-2">Detail ({{ results.items_evaluated }} SKU-locations evaluated, {{ results.runtime_ms }}ms)</div>
+  <table class="table table-ict mb-0">
+    <thead><tr><th>SKU</th><th>Location</th><th>Baseline SS</th><th>Scenario SS</th><th>Baseline LT Demand</th><th>Scenario LT Demand</th><th>Available</th></tr></thead>
+    <tbody>
+      {% for d in results.detail %}
+      <tr>
+        <td>{{ d.sku }}</td><td>{{ d.location }}</td>
+        <td>{{ d.baseline_safety_stock | num }}</td><td>{{ d.scenario_safety_stock | num }}</td>
+        <td>{{ d.baseline_lead_time_demand | num }}</td><td>{{ d.scenario_lead_time_demand | num }}</td>
+        <td>{{ d.available | num }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

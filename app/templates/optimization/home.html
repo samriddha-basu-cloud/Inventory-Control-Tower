@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block title %}Optimization{% endblock %}
+{% block content %}
+<div class="ict-section-title">Optimization Engine</div>
+<div class="ict-section-sub">Every run is persisted with its inputs, objective and result for reproducibility.</div>
+
+<div class="row g-3 mb-4">
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="fw-bold">Safety Stock Recompute</div>
+      <p class="small text-muted">Recomputes statistical safety stock (combined demand + lead-time variability) for every SKU-location from current demand history and supplier lead-time stats.</p>
+      <form method="post" action="{{ url_for('optimization.run_safety_stock') }}">
+        <button class="btn btn-sm btn-primary">Run</button>
+      </form>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="fw-bold">Multi-Echelon (MEIO)</div>
+      <p class="small text-muted">Compares single-echelon vs. risk-pooled multi-echelon safety stock for a central DC feeding regional DCs.</p>
+      <a href="{{ url_for('optimization.meio') }}" class="btn btn-sm btn-primary">Open</a>
+    </div>
+  </div>
+  <div class="col-md-4">
+    <div class="ict-card">
+      <div class="fw-bold">Network Rebalancing</div>
+      <p class="small text-muted">Matches surplus and deficit nodes for the same SKU and recommends transfers.</p>
+      <a href="{{ url_for('optimization.rebalancing') }}" class="btn btn-sm btn-primary">Open</a>
+    </div>
+  </div>
+</div>
+
+<div class="ict-card">
+  <div class="fw-bold mb-2">Run History</div>
+  <table class="table table-ict mb-0">
+    <thead><tr><th>Type</th><th>Objective</th><th>Status</th><th>Summary</th><th>When</th></tr></thead>
+    <tbody>
+      {% for r in runs %}
+      <tr>
+        <td>{{ r.run_type }}</td>
+        <td class="small">{{ r.objective }}</td>
+        <td><span class="badge {{ 'bg-success' if r.status=='COMPLETED' else 'bg-danger' }}">{{ r.status }}</span></td>
+        <td class="small">{{ r.result_summary }}</td>
+        <td class="small text-muted">{{ r.created_at.strftime('%d %b %H:%M') }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5" class="text-muted">No optimization runs yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}
