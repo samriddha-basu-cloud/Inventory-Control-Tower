@@ -1,49 +1,12 @@
-{% extends "base.html" %}
-{% block title %}Incident #{{ incident.id }}{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}{{ i.incident_no }}{% endblock %}
 {% block content %}
-<div class="ict-section-title">{{ incident.title }}</div>
-<div class="ict-section-sub">Opened {{ incident.created_at.strftime('%d %b %Y %H:%M') }} · Status: {{ incident.status }}</div>
-
-<div class="row g-3 mb-3">
-  <div class="col-md-6">
-    <div class="ict-card">
-      <div class="fw-bold small text-muted">OBSERVED CAUSE (from data)</div>
-      <p>{{ incident.root_cause_observed or '—' }}</p>
-      <div class="fw-bold small text-muted">LIKELY CAUSE (unconfirmed)</div>
-      <p class="mb-0">{{ incident.root_cause_likely or '—' }}</p>
-    </div>
-  </div>
-  <div class="col-md-6">
-    <div class="ict-card">
-      <div class="ict-kpi-label">Financial Impact</div>
-      <div class="ict-kpi-value">{{ incident.financial_impact | money }}</div>
-      <div class="ict-kpi-sub">{{ incident.affected_sku_count }} SKUs · {{ incident.affected_location_count }} locations</div>
-    </div>
-  </div>
-</div>
-
-<div class="ict-card mb-3">
-  <div class="fw-bold mb-2">Related Alerts</div>
-  <table class="table table-ict mb-0">
-    <thead><tr><th>Sev</th><th>SKU</th><th>Location</th><th>Impact</th><th>Message</th></tr></thead>
-    <tbody>
-      {% for a in related_alerts %}
-      <tr>
-        <td><span class="badge badge-{{ a.severity|lower }}">{{ a.severity }}</span></td>
-        <td>{{ a.item.sku if a.item else '—' }}</td>
-        <td>{{ a.location.code if a.location else '—' }}</td>
-        <td>{{ a.financial_impact | money }}</td>
-        <td class="small">{{ a.message }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-
-<div class="ict-card">
-  <div class="fw-bold mb-2">Suggested next step</div>
-  <p class="small text-muted mb-2">Use the Rebalancing engine to check whether any surplus node can cover the affected SKUs
-    while the delayed purchase order is in flight.</p>
-  <a href="{{ url_for('optimization.rebalancing') }}" class="btn btn-sm btn-primary">Open Rebalancing</a>
-</div>
+<div class="page-head"><div><h1>{{ i.incident_no }} · {{ i.title }}</h1><p>Root cause: <b>{{ i.root_cause }}</b> · clustered on <span class="mono">{{ i.cluster_key }}</span></p></div><a class="btn" href="{{ url_for('alerts.incidents') }}">← Incidents</a></div>
+<div class="kpis mb">{{ kpi('Severity', i.severity, '', i.severity) }}{{ kpi('Priority', i.priority_score|round(0)|int) }}{{ kpi('Revenue at risk', i.impact.revenue_at_risk|money) }}{{ kpi('Production at risk', i.impact.production_at_risk|money) }}{{ kpi('Inventory impact', i.impact.inventory_impact|money) }}{{ kpi('Service impact', i.impact.service_impact|pct(1)) }}{{ kpi('Alerts', i.impact.alerts) }}{{ kpi('Customers', i.impact.customers) }}</div>
+<div class="grid g2 mb"><section class="card"><h2>Explainability</h2><dl class="kv"><dt>WHAT?</dt><dd>{{ i.explain.what }}</dd><dt>WHY?</dt><dd>{{ i.explain.why }}</dd><dt>WHEN?</dt><dd>{{ i.explain.when }}</dd><dt>WHERE?</dt><dd>{{ i.explain.where }}</dd><dt>WHO / WHAT?</dt><dd>{{ i.explain.who }}</dd><dt>HOW BIG?</dt><dd>revenue {{ i.explain.how_big.revenue_at_risk|money }} · production {{ i.explain.how_big.production_at_risk|money }} · inventory {{ i.explain.how_big.inventory_impact|money }}</dd><dt>OPTIONS?</dt><dd>{{ i.explain.options }}</dd><dt>IF NOTHING?</dt><dd>{{ i.explain.if_nothing }}</dd></dl></section>
+<section class="card"><h2>Shared dimensions &amp; scope</h2><dl class="kv"><dt>Ports</dt><dd>{{ i.dims.ports|join(', ') or '–' }}</dd><dt>Lanes</dt><dd>{{ i.dims.lanes|join(', ') or '–' }}</dd><dt>Suppliers</dt><dd>{{ i.dims.suppliers|join(', ') or '–' }}</dd><dt>Shipments</dt><dd>{{ i.dims.shipments|join(', ') or '–' }}</dd><dt>Purchase orders</dt><dd>{{ i.impact.affected_pos|join(', ') or '–' }}</dd><dt>Affected SKUs ({{ i.impact.affected_skus|length }})</dt><dd>{% for s in i.impact.affected_skus %}<a href="{{ url_for('inventory.sku360', sku=s) }}">{{ s }}</a>{{ ', ' if not loop.last }}{% endfor %}</dd><dt>Affected nodes</dt><dd>{{ i.impact.affected_nodes|join(', ') }}</dd></dl>
+{% if has_perm('alert_manage') %}<form method="post" action="{{ url_for('alerts.incident_status', incident_id=i.id) }}" class="form-grid mt"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div><label>Status ({{ i.status }})</label><select name="status">{% for s in statuses %}<option {{ 'selected' if s == i.status }}>{{ s }}</option>{% endfor %}</select></div><div><label>Note</label><input type="text" name="note"></div><label class="inline"><input type="checkbox" name="cascade"> apply to member alerts</label><div><button class="btn primary">Update</button></div></form>{% endif %}</section></div>
+<section class="card mb"><h2>Member alerts</h2>{% set ar = [] %}{% for a in alerts %}{% set _ = ar.append({'id':a.id,'no':a.alert_no,'sev':a.severity,'type':a.alert_type.replace('_',' ').title(),'title':a.title,'pri':a.priority_score,'status':a.status,'value':(a.impact or {}).get('revenue_at_risk') or (a.impact or {}).get('value_at_risk')}) %}{% endfor %}{{ table('ia', [{'k':'no','l':'Alert','t':'link','href':'/alerts/{id}'},{'k':'sev','l':'Severity','t':'badge'},{'k':'type','l':'Type'},{'k':'title','l':'Title'},{'k':'pri','l':'Priority','t':'num','d':0},{'k':'status','l':'Status','t':'badge'},{'k':'value','l':'Value','t':'money'}], ar, name='incident-alerts') }}</section>
+<section class="card"><h2>Recommendations</h2>{% for r in recs %}<div style="padding:6px 0;border-bottom:1px solid var(--grid)"><a href="{{ url_for('actions.recommendation', rec_id=r.id) }}"><b>{{ r.rec_no }}</b> · {{ r.title }}</a> <span class="small muted">{{ badge(r.kind) }} conf {{ (r.confidence*100)|round(0)|int }}%</span></div>{% else %}<p class="muted">No recommendations linked.</p>{% endfor %}</section>
 {% endblock %}

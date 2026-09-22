@@ -1,140 +1,91 @@
-# Inventory Control Tower (ICT)
+# INVENTORY CONTROL TOWER (ICT)
 
-*"See. Predict. Optimize. Execute."*
+*From Inventory Visibility to Autonomous Inventory Decisions.*
 
-A working, multi-industry inventory intelligence and decision platform: visibility (ledger,
-ATP, inventory position), analytics (ABC/XYZ, aging, service level, lead-time statistics),
-optimization (safety stock, ROP, EOQ, single- vs multi-echelon, allocation, rebalancing),
-risk/exception management (alerts, incident clustering, root cause), scenario simulation
-(digital twin), and a human-in-the-loop recommend → approve → execute workflow.
+An all-industry, multi-echelon inventory intelligence and decision control tower: canonical inventory state, ingestion, ledger, reconciliation,
+segmentation, probabilistic risk, safety stock / ROP / EOQ / 12 replenishment policies, alerts and root-cause incidents, a digital-twin scenario lab,
+LP/MILP optimisation, governed actions with approvals and (mock) execution, reports and a REST API.
 
-This README describes exactly what is implemented and runnable today. See
-[`docs/known-limitations.md`](docs/known-limitations.md) for what is explicitly deferred.
+Stack: Flask 3 · Jinja2 · SQLAlchemy 2 (SQLite locally, PostgreSQL in production) · Alembic · NumPy/SciPy (HiGHS) · Plotly · vanilla JS.
 
-## Quick start (local)
+## Run it
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt        # add requirements-dev.txt too if you want to run tests
-cp .env.example .env                   # edit SECRET_KEY etc. if you like
-python run.py                          # http://localhost:5000
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt            # add requirements-dev.txt for tests
+python run.py                              # http://127.0.0.1:5000  (macOS: port 5000 may be taken by AirPlay - use `PORT=5055 python run.py`)
 ```
 
-The app creates its SQLite database and tables automatically on first request
-(`instance/ict.db`). From the UI, click **Launch Demo** (top right, on every
-page) to load the synthetic multi-echelon FMCG network described below.
-
-Equivalent from the CLI:
+The database (`instance/ict.db`), roles, 19 detection rules, KPI definitions and configuration are created on first start.
+An empty system shows an onboarding screen: click **LOAD DEMO NETWORK** (pick industries; all seven take ~8 s).
+CLI alternatives: `flask --app run.py init-db`, `flask --app run.py load-demo`, `flask --app run.py run-detection`.
 
 ```bash
-flask --app run init-db      # create tables only
-flask --app run load-demo    # create tables + load synthetic demo network
+pip install -r requirements-dev.txt && python -m pytest -q     # 186 passed, 1 skipped
 ```
 
-## Run the tests
+Try your own data: `data/sample/*.csv` is a small fictional dataset (regenerate with `python data/sample/make_sample.py`). Upload in this order in
+**Data Hub**: locations, suppliers, customers, items, item_suppliers, balances, demand, lead_times, purchase_orders, sales_orders.
 
-```bash
-pip install -r requirements-dev.txt
-pytest tests/ -q
-```
+Production: see [docs/deployment.md](docs/deployment.md) (`gunicorn wsgi:app`, `DATABASE_URL`, required `SECRET_KEY`, `AUTH_REQUIRED=1`, `API_KEY`). Variables: `.env.example`.
 
-105 tests cover the safety-stock/ROP/EOQ formulas (including zero-demand,
-zero-lead-time, zero-variance and negative-input edge cases), ABC/XYZ
-classification, aging/FEFO/FIFO, UOM and currency conversion, allocation
-rules, single- vs multi-echelon comparison, inventory position/ATP against a
-real database, and a full integration suite that loads the demo network and
-exercises every page and API endpoint.
+## What is implemented
 
-## What's actually implemented
+| Area | Where |
+|---|---|
+| Canonical inventory states, Available / Net Available / Position (no double counting) | `app/services/engine.py`, `app/models/inventory.py` |
+| Append-only ledger, idempotent postings, cycle counts, UOM conversion | `app/services/ledger_service.py` → `/inventory/ledger` |
+| ERP/WMS/3PL/physical reconciliation with tolerances and suggested adjustments | `reconciliation_service.py` → `/inventory/reconciliation` |
+| Data Hub: CSV/XLSX/JSON/REST ingestion with column mapping, validation, preview, all-or-nothing option, EDI 846/856/214 translation, canonical events | `ingestion_service.py`, `connectors/`, `event_service.py` → `/data-hub` |
+| ABC/XYZ/FSN/HML/VED/SDE segmentation (configurable), aging, expiry & FEFO, lot/batch traceability (forward & backward) | `/inventory/*` |
+| ICT Inventory Health Index (transparent, not an industry standard) | `/inventory/health` |
+| Demand & forecast (Baseline/Consensus/Adjusted), FIT ⇄ ICT contract, forecast → inventory chain | `/demand`, `/demand/chain`, [docs/fit-contract.md](docs/fit-contract.md) |
+| 8 safety-stock methods, ROP, EOQ, practical order quantity, 12 replenishment policies, lead-time static vs observed P90 comparison | `/safety-stock`, `/replenishment`, `/lead-time` |
+| Time-phased projection, stock-out probability, expected shortage/lost sales, supplier scorecards and risk, supply visibility (PO/shipment/port/lane) | `/risk`, `/supply` |
+| Pegging & allocation (no double commitment, scarcity simulator) | `/pegging` |
+| Detection rules (JSON, safe engine), alert lifecycle, dedupe/suppression/escalation, root-cause incidents by shared dimensions, Planner Priority Score | `/alerts`, `/root-cause` |
+| Scenario Lab / digital twin (16 change types, Monte-Carlo, never touches production), scenario compare, experiments, S&OP | `/scenarios`, `/digital-twin`, `/sop` |
+| Optimisation: MILP replenishment (MOQ, multiples, budget, capacity, shelf-life, service floor), LP rebalancing, infeasibility explanations | `/optimization`, `/rebalancing`, `app/optimization/` |
+| Financial (working capital, carrying cost, obsolescence) and sustainability (carbon *estimates*) | `/financial`, `/sustainability` |
+| Industry modes (automotive, pharma, retail/FMCG, high-tech, manufacturing, spare parts) | `/industry`, [docs/industry-modes.md](docs/industry-modes.md) |
+| Action Center, autonomy levels 0–4 with guardrails, HITL approvals, MockExecutionConnector, audit trail | `/actions`, `/autonomy`, `/audit`, `/governance`, [docs/governance.md](docs/governance.md) |
+| Reports: 11 reports as CSV/XLSX/PDF + 18-sheet workbook | `/reports`, `/reports/full-workbook.xlsx` |
+| REST API (22 routes), CSRF, RBAC, API key, secure uploads | [docs/api.md](docs/api.md) |
+| Master data, configurable policy hierarchy (GLOBAL→SKU_LOCATION), KPI formula editor, settings | `/master-data`, `/settings` |
+| Global filters, global search (`/` focuses it), drill-down, light/dark, responsive layout | `app/templates/base.html`, `app/static/` |
 
-- **Canonical inventory ledger** with the full status vocabulary from the
-  spec (ON_HAND, ALLOCATED, COMMITTED, QUARANTINED, IN_TRANSIT, ON_ORDER,
-  EXCESS, OBSOLETE, …) — see `app/models/__init__.py`.
-- **Inventory position & ATP**, computed from real ledger + open PO/SO data,
-  never conflating on-hand with available (`app/services/inventory_service.py`).
-- **ABC / XYZ / segment policy recommendations**, computed network-wide from
-  trailing demand history (`app/analytics/abc_xyz.py`).
-- **Aging, FEFO/FIFO, expiry tracking** including near-expiry/expired batch
-  detection (`app/analytics/aging.py`).
-- **Safety stock engine** with 7 documented methodologies (basic statistical,
-  demand variability, lead-time variability, combined variability, periodic
-  review, continuous review, seasonal) — every result shows its formula,
-  inputs and assumptions (`app/optimization/safety_stock.py`).
-- **ROP, EOQ, and lot-size reconciliation** (MOQ / order multiple / capacity)
-  with a step-by-step explanation of the final recommended quantity.
-- **Single-echelon vs multi-echelon (MEIO) comparison** using a documented
-  risk-pooling approximation for a two-tier network. This is genuinely
-  bidirectional — see [`docs/optimization.md`](docs/optimization.md) for why
-  centralizing safety stock can *increase* it when supplier lead-time
-  variability dominates, and the UI reports whichever direction the numbers
-  actually show.
-- **Network rebalancing** — surplus/deficit detection and transfer
-  recommendations with haversine-distance-based transit time & cost.
-- **Allocation engine** — FIFO, priority-customer, proportional/fair-share
-  and margin-based allocation against real open sales-order demand.
-- **Stockout risk & excess/obsolescence detection**, probability-based using
-  demand + lead-time variance, not a flat "below safety stock" rule.
-- **Alert engine** with severity scoring (P1–P4), and clustering of related
-  alerts into one Incident with an observed vs. likely (never fabricated)
-  root cause.
-- **Recommendation → Approval → Execution workflow** with a full audit trail
-  (`Recommendation`, `Approval`, `Execution` tables) and an execution-safety
-  check that re-validates availability before simulated execution.
-- **Digital-twin scenarios** — demand/lead-time/safety-stock what-ifs
-  computed from a snapshot, never mutating live data; scenarios are
-  versioned and comparable.
-- **Supplier risk scoring**, **FIT Inventory Health Index** (documented
-  composite, not claimed to be an industry standard).
-- **Network map** (Plotly) and **SKU × location heatmap** (DOS / value /
-  stockout risk).
-- **Master Data Center** with a real data-quality scan (missing supplier,
-  missing/invalid MOQ, missing lead time, duplicate SKU).
-- **REST API** (`/api/...`) for inventory position/availability/risk/aging,
-  optimization runs, scenarios, allocation, replenishment, alerts and
-  approvals — see [`docs/api.md`](docs/api.md).
-- **Multi-sheet Excel report export** (README, Executive Summary, Inventory
-  Position, Aging, ABC/XYZ, Safety Stock, Stockout Risk, Excess, Supplier,
-  Alerts, Methodology).
-- **Synthetic demo data generator**: 4 suppliers, 1 plant, 1 central DC, 3
-  regional DCs, 4 stores, 5 customers, 24 SKUs, 90 days of demand history,
-  and a deliberately injected supplier-delay disruption so the alert →
-  incident → rebalancing → approval → execution story is demonstrable
-  end-to-end (see `app/services/demo_data_service.py`).
+Formulas: [docs/inventory-methodology.md](docs/inventory-methodology.md). Architecture: [docs/architecture.md](docs/architecture.md). Data model: [docs/data-model.md](docs/data-model.md).
+User guide: [docs/user-guide.md](docs/user-guide.md).
 
-## Repository structure
+## Project structure
 
 ```
 app/
-  routes/         Flask blueprints (dashboard, inventory, network, optimization,
-                   alerts, scenarios, allocation, replenishment, reports,
-                   master_data, api)
-  models/          SQLAlchemy canonical data model
-  services/        Business logic tying models + optimization/analytics together
-  optimization/     Pure calculation modules: safety_stock, reorder_point, eoq,
-                   single_echelon, multi_echelon, allocation, replenishment, network
-  analytics/        abc_xyz, aging, service_level, lead_time, working_capital,
-                   inventory_health
-  templates/, static/   UI
-  utils/           uom.py, currency.py, industry_profiles.py
-tests/             pytest suite (105 tests)
-docs/              architecture, methodology, API, deployment, governance, limitations
+  __init__.py  config.py  extensions.py
+  models/        canonical data model (master, inventory, orders, planning, control)
+  services/      engine (pure calc), snapshot, ledger, ingestion, alerts, incidents, simulation, actions, reports, demo generator …
+  optimization/  SciPy/HiGHS solvers (replenishment MILP, transfer LP, allocation LP, network)
+  connectors/    EDI translator, connector interfaces + mock adapters, notifications
+  routes/        18 blueprints (UI + /api)
+  templates/ static/ utils/
+data/sample/     CSV sample for the Data Hub          migrations/   Alembic
+docs/            methodology, API, FIT contract, governance, deployment, limitations
+tests/           186 tests (calculations, ledger/recon, optimisation, alerts/actions, data + web)
 ```
 
-## Deployment (Render)
+## Requires external integrations or credentials (not included / not live)
 
-`render.yaml` provisions a Postgres database and a web service running
-`gunicorn`. See [`docs/deployment.md`](docs/deployment.md).
+* **ERP / WMS / TMS / MES / 3PL / IoT / telematics** – SAP, Oracle, Dynamics, NetSuite etc. are listed in the connector catalogue as *NOT CONFIGURED*. Data enters by file upload, REST
+  (`/api/ingest/<entity>`, `/api/events`, `/api/forecast`) or mock adapters. Write-back is not implemented; `LIVE` execution is refused.
+* **EDI transport** (AS2/VAN/SFTP) – ICT translates pasted/uploaded X12 846/856/214 text only. Mappings are simplified; adapt to your partner guides.
+* **Message bus** – events are stored and processed in-process; `EventPublisher` is the seam for Kafka/Event Hubs.
+* **Notifications** – Email (SMTP), Slack, Teams, webhook are off until `SMTP_*`, `NOTIFY_*_URL` are set.
+* **FIT** – sends forecasts with `X-API-Key` (`API_KEY`).
+* **PostgreSQL** – `DATABASE_URL` and `pip install psycopg2-binary`. **Auth** – `AUTH_REQUIRED=1`, `ADMIN_PASSWORD`, `SECRET_KEY`. For SSO/LDAP integrate at `load_user`.
+* **Background jobs at scale** – Celery/RQ/Redis can replace `services/jobs.py`; the default runs jobs inline (or a thread pool with `JOBS_SYNC=0`).
 
-## Industry modes
+## Limitations (details in [docs/known-limitations.md](docs/known-limitations.md))
 
-The platform ships one shared codebase with an **industry configuration
-layer** (`app/utils/industry_profiles.py`) rather than a forked codebase per
-vertical — see [`docs/industry-modes.md`](docs/industry-modes.md).
-
-## Known limitations
-
-See [`docs/known-limitations.md`](docs/known-limitations.md) for an honest
-list of what is deferred (PDF export, live ERP/WMS/TMS connectors, real
-authentication, Monte Carlo simulation, ML-based lead-time prediction, and
-more) and why.
+Demo data is synthetic; the demo runs on mock execution only; probabilities assume normal demand within an interval and a mixture over the four most uncertain arrivals;
+the projection shows scheduled supply only; simulation and optimisation are decision-support approximations (linear cost proxies, per-item transfer LP); carbon is estimated
+from configurable factors; the PDF report is a summary-table export; no FX conversion; alert thresholds need tuning on real data.

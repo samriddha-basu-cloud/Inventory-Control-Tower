@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, post_button %}
+{% block title %}Data Hub{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Data Hub</h1><p>Harmonise multiple sources into the canonical model: <b>CSV · XLSX · JSON · REST</b> today, adapter interfaces for SAP, Oracle, Dynamics, NetSuite, WMS, TMS, MES, 3PL, EDI, IoT and telematics. ICT never fakes a live integration: anything not configured says so.</p></div></div>
+{% if report %}<div class="card mb {{ 'rec-card' }}"><h2>Last load: {{ report.entity }} · {{ report.file }} - {{ badge('DONE' if report.mode == 'COMMITTED' else 'INFO', report.mode) }}</h2>
+<div class="kpis">{{ kpi('Rows', report.total) }}{{ kpi('Valid', report.valid, '', 'NORMAL' if report.n_errors == 0 else 'WATCH') }}{{ kpi('Created', report.created) }}{{ kpi('Updated', report.updated) }}{{ kpi('Skipped', report.skipped) }}{{ kpi('Errors', report.n_errors, '', 'CRITICAL' if report.n_errors else 'NORMAL') }}</div>
+<p class="small">Column mapping: {% for k, v in report.mapped.items() %}<span class="mono">{{ v }}</span>→<b>{{ k }}</b> {% endfor %}{% if report.ignored %}<span class="muted">· ignored: {{ report.ignored|join(', ') }}</span>{% endif %}</p>
+{% if report.errors %}{{ table('rep-err', [{'k':'row','l':'Row','t':'num'},{'k':'field','l':'Field'},{'k':'message','l':'Problem'}], report.errors, group=false, export=false) }}{% endif %}{% for w in report.warnings %}<div class="small muted">⚠ {{ w }}</div>{% endfor %}</div>{% endif %}
+<div class="grid g-main mb">
+<section class="card"><h2>Upload &amp; validate</h2>
+<form method="post" action="{{ url_for('datahub.upload') }}" enctype="multipart/form-data" class="form-grid">
+ <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+ <div><label>Entity</label><select name="entity" id="entity">{% for e in entities %}<option>{{ e }}</option>{% endfor %}</select></div>
+ <div><label>File (CSV / XLSX / JSON, ≤ 25 MB)</label><input type="file" name="file" accept=".csv,.xlsx,.json" required></div>
+ <div><label>Excel sheet (optional)</label><input type="text" name="sheet" placeholder="first sheet"></div>
+ <div><label>Mode</label><select name="mode"><option value="preview">Preview (validate only, writes nothing)</option><option value="commit">Commit valid rows</option></select></div>
+ <label class="inline"><input type="checkbox" name="all_or_nothing"> all-or-nothing</label><label class="inline"><input type="checkbox" name="detect"> re-run detection after commit</label>
+ <div><button class="btn primary" {{ 'disabled' if not has_perm('ingest') }}>Validate / load</button></div></form>
+{% if not has_perm('ingest') %}<p class="small muted">Your role lacks the “ingest” permission.</p>{% endif %}
+<p class="small muted">Files are validated (extension whitelist, size cap, content sniffing), never executed, and stored under random names. Rows with unknown SKUs, invalid UOM, negative stock, bad dates, invalid MOQ/multiples or duplicate transaction ids are rejected with row-level messages.</p>
+<details><summary class="small">Expected columns & templates</summary>{% for e, cols in schemas.items() %}<div class="small" style="margin:4px 0"><b>{{ e }}</b> <a href="{{ url_for('datahub.template', entity=e) }}">template.csv</a>: {% for c, req in cols %}<span class="mono">{{ c }}{{ '*' if req }}</span> {% endfor %}</div>{% endfor %}</details></section>
+<section class="card"><h2>REST-ready interfaces</h2><p class="small">Machine clients authenticate with <span class="mono">X-API-Key</span> (env <span class="mono">API_KEY</span>).</p>
+<pre class="mono small" style="white-space:pre-wrap">POST /api/ingest/&lt;entity&gt;   {"records":[...], "commit": true}
+POST /api/forecast          FIT → ICT contract
+GET  /api/forecast/contract JSON contract
+GET  /api/forecast/signals  ICT → FIT actuals + constraints
+POST /api/events            canonical events</pre></section></div>
+
+<div class="grid g2 mb">
+<section class="card"><h2>Data latency {{ tip('Age of each source feed vs its expected frequency. Stale feeds lower recommendation confidence and raise a Stale-data alert.') }}</h2>{{ table('lat', [{'k':'source','l':'Source'},{'k':'last_sync','l':'Last sync','t':'date','time':true},{'k':'age_hours','l':'Data age (h)','t':'num','d':1},{'k':'expected_hours','l':'Expected every (h)','t':'num'},{'k':'status','l':'Status','t':'badge'},{'k':'note','l':'Note'}], lat, group=false, export=false) }}</section>
+<section class="card"><h2>Connector catalogue</h2>{{ table('conn', [{'k':'name','l':'Connector'},{'k':'system','l':'System'},{'k':'status','l':'Status','t':'badge'},{'k':'desc','l':'Notes'}], catalogue, group=false, export=false) }}
+<div style="margin-top:8px">{% for c in catalogue if c.key %}{{ post_button(url_for('datahub.pull', key=c.key), 'Pull ' ~ c.name, 'btn sm') }} {% endfor %}</div></section></div>
+
+<div class="grid g2 mb">
+<section class="card"><h2>EDI translator (846 · 856 · 214) {{ tip('Translates X12 text to canonical records/events. This is a parser, not an EDI connection - no partner link exists unless you configure one externally.') }}</h2>
+<form method="post" action="{{ url_for('datahub.edi') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><textarea name="edi" rows="5" placeholder="Paste X12 (ISA…IEA) here" style="font-family:monospace;font-size:.78rem">{{ samples['856'] }}</textarea>
+<div style="display:flex;gap:8px;align-items:center;margin-top:6px;flex-wrap:wrap"><input type="text" name="partner" placeholder="partner (optional)"><label class="inline"><input type="checkbox" name="apply"> apply (publish events / store balances)</label><button class="btn primary">Translate</button>{% for k in samples %}<button class="btn sm" type="button" onclick="this.form.edi.value=this.dataset.s" data-s="{{ samples[k] }}">Load sample {{ k }}</button>{% endfor %}</div></form></section>
+<section class="card"><h2>Event stream {{ tip('14 canonical event types, validated, idempotent (event_id), processed synchronously. The bus is a seam for Kafka / Event Hub.') }}</h2>
+<form method="post" action="{{ url_for('datahub.publish_event') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div><label>Event type</label><select name="event_type">{% for t in event_types %}<option>{{ t }}</option>{% endfor %}</select></div><div><label>event_id (optional)</label><input type="text" name="event_id"></div><div style="grid-column:1/-1"><label>Payload (JSON)</label><textarea name="payload" rows="3" style="font-family:monospace">{"sku":"SKU","location":"NODE","qty":10}</textarea></div><div><button class="btn primary">Publish</button></div></form>
+<details><summary class="small">Event schemas</summary>{% for t, f in event_schemas.items() %}<div class="small"><b>{{ t }}</b>: {% for n, (ty, r) in f.items() %}<span class="mono">{{ n }}:{{ ty }}{{ '*' if r }}</span> {% endfor %}</div>{% endfor %}</details></section></div>
+{% if session.get('edi_result') %}{% set e = session.pop('edi_result') %}<div class="card mb"><h2>EDI {{ e.transaction }} result (control {{ e.control }}, partner {{ e.partner }})</h2>{% for w in e.warnings %}<div class="small muted">⚠ {{ w }}</div>{% endfor %}<pre class="mono small" style="white-space:pre-wrap;overflow:auto">{{ {'records': e.records, 'events': e.events, 'applied': e.applied}|tojson(indent=1) }}</pre></div>{% endif %}
+<section class="card mb"><h2>Recent events</h2>{% set er = [] %}{% for e in events %}{% set _ = er.append({'when':e.received_at,'type':e.event_type,'source':e.source,'status':e.status,'error':e.error,'id':e.event_id[:10]}) %}{% endfor %}{{ table('events', [{'k':'when','l':'Received','t':'date','time':true},{'k':'type','l':'Type'},{'k':'source','l':'Source'},{'k':'status','l':'Status','t':'badge'},{'k':'error','l':'Error'},{'k':'id','l':'Event id'}], er, group=false, export=false, empty='No events yet.') }}</section>
+<section class="card"><h2>Notification channels</h2><p class="small">Optional and disabled unless configured by environment variables (no secrets in source).</p>{% for n in notif %}<span class="chip">{{ n.channel }} {{ badge('DONE' if n.configured else 'NODATA', 'configured' if n.configured else 'not configured') }}</span> {% endfor %}{{ post_button(url_for('datahub.notify_test'), 'Send test', 'btn sm') }}</section>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}Sign in{% endblock %}
+{% block content %}
+<div class="card" style="max-width:420px;margin:60px auto"><h1>Sign in</h1><p class="muted">Inventory Control Tower</p><form method="post" class="form-grid" style="grid-template-columns:1fr"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.args.get('next','') }}"><div><label>Username</label><input type="text" name="username" autofocus required></div><div><label>Password</label><input type="password" name="password" required></div><div><button class="btn primary">Sign in</button></div></form></div>
+{% endblock %}

@@ -1,59 +1,18 @@
-# Data Model
+# Canonical data model
 
-Full model source: `app/models/__init__.py`. Designed for PostgreSQL in
-production (`render.yaml`); SQLite locally.
+Every major entity carries `source_system, source_id, last_updated, effective_date, status` (`CanonicalMixin`) so multiple systems can be harmonised.
 
-## Master data
-`Organization`, `User`, `Supplier`, `Customer`, `Location` (with
-`parent_location_id` for the network hierarchy), `Item`, `UomConversion`,
-`ExchangeRate`, `BomComponent`.
+| Group | Tables |
+|---|---|
+| Master | `item` (SKU/product), `product_family`, `item_uom`, `location` (plant/DC/warehouse/store/line-side…, self-referencing `parent_id`, `echelon`), `supplier`, `customer`, `carrier`, `item_supplier`, `item_location_source`, `bom_line`, `calendar_event`, `promotion` |
+| Inventory | `inventory_balance` (item × location × lot × state), `inventory_transaction` (append-only ledger), `lot` (lot/batch), `serial_number`, `external_balance` (ERP/WMS/3PL/physical), `reusable_asset`, `return_record`, `kpi_snapshot` |
+| Orders | `purchase_order(+_line)`, `sales_order(+_line)`, `transfer_order`, `production_order`, `shipment(+_line)` |
+| Planning | `demand`, `forecast` (BASELINE/CONSENSUS/ADJUSTED, source FIT/ERP/UPLOAD/MANUAL), `lead_time_observation`, `safety_stock_policy`, `replenishment_policy`, `control_policy`, `allocation`, `peg` |
+| Control | `alert`, `incident`, `risk`, `recommendation`, `action`, `approval`, `execution`, `autonomy_rule`, `scenario`, `experiment`, `event`, `sync_status`, `job`, `notification`, `audit_log` |
+| Configuration | `setting`, `industry_profile`, `inventory_state_def`, `rule`, `kpi_definition`, `role`, `user_account` |
 
-## Inventory truth
-`InventoryLedger` — one row per (item, location, status, batch): the
-canonical source of physical/available/allocated/in-transit/etc. balances.
-Statuses: `ON_HAND, AVAILABLE, ALLOCATED, COMMITTED, QUARANTINED, BLOCKED,
-DAMAGED, IN_TRANSIT, WIP, ON_ORDER, RETURN_IN_TRANSIT, RETURNED, REPAIR,
-SCRAP, EXPIRED, EXCESS, OBSOLETE`.
+Entity relationships that matter: an *item-location pair* is the unit of planning; inbound supply is derived from open PO lines
+(`on_order = ordered − received − in_transit`), transfers and production orders (no double counting with shipments, which are visibility records);
+`peg` links supply to demand; `allocation` rows are the only claims on stock.
 
-`InventoryTransaction` — append-only movement log (receipt, shipment,
-transfer, adjustment, return, scrap) for the transaction timeline / audit
-trail.
-
-## Demand & forecast
-`DemandHistory` (actuals used for demand statistics), `ForecastPoint`
-(forecast + P10/P90 + actual, for forecast-error tracking once forecasts are
-loaded - not populated by the demo generator).
-
-## Orders
-`PurchaseOrder` + `PurchaseOrderLine`, `TransferOrder`, `SalesOrder` +
-`SalesOrderLine`, `Shipment`.
-
-## Policies
-`SafetyStockPolicy` (calculated value + optional planner override with
-reason, per section 143), `ReplenishmentPolicy` (min/max, ROP/EOQ, or
-order-up-to).
-
-## Optimization / scenarios
-`OptimizationRun` (persists objective, input snapshot, result summary, and
-runtime for reproducibility per section 163), `Scenario` (assumptions +
-results JSON, never mutates live data).
-
-## Exceptions / decisions
-`Alert`, `Incident` (clusters related alerts with an observed vs. likely
-root cause), `Recommendation` (with `reason_json` / `expected_impact_json`
-for explainability, `confidence`, `autonomy_level`), `Approval`,
-`Execution` (mode: SIMULATED — no LIVE mode exists because no connector is
-configured), `AuditLog`.
-
-## Deliberate simplifications vs. the full canonical model requested
-
-- No separate `Batch`/`Lot`/`Serial` tables - batch/lot identity is carried
-  as `batch_code` + `manufacture_date` + `expiry_date` directly on
-  `InventoryLedger` rows. Sufficient for FEFO/aging/expiry logic; a
-  dedicated genealogy table (supplier → batch → production → shipment →
-  customer) is not implemented.
-- No `ForecastError` table - forecast error would be computed from
-  `ForecastPoint.forecast_qty` vs `.actual_qty`, but no forecast is loaded
-  by the demo generator, so this is present in the schema but unexercised.
-- Single-organization: `Organization`/`User` rows exist for attribution but
-  there is no authentication gate (see `known-limitations.md`).
+Migrations: `migrations/` (Alembic via Flask-Migrate). Local runs use `db.create_all()` + seeding for convenience; production should run `flask db upgrade`.

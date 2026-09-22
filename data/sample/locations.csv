@@ -1,0 +1,4 @@
+code,name,type,region,country,city,lat,lon,capacity_units,parent,echelon
+SMP-PLANT,Sample Plant Pune,PLANT,West,IN,Pune,18.52,73.86,200000,,1
+SMP-DC-N,Sample DC North,DC,North,IN,Delhi,28.61,77.21,120000,SMP-PLANT,2
+SMP-DC-S,Sample DC South,DC,South,IN,Chennai,13.08,80.27,100000,SMP-PLANT,2

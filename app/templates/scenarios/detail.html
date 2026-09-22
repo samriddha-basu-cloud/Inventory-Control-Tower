@@ -1,47 +1,13 @@
-{% extends "base.html" %}
-{% block title %}{{ scenario.name }}{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}{{ s.scenario_no }}{% endblock %}
 {% block content %}
-<div class="ict-section-title">{{ scenario.name }}</div>
-<div class="ict-section-sub">Assumptions: {{ assumptions }}</div>
-
-<div class="row g-3 mb-4">
-  <div class="col-md-4">
-    <div class="ict-card">
-      <div class="ict-kpi-label">Baseline Safety Stock Value</div>
-      <div class="ict-kpi-value">{{ results.baseline.safety_stock_value | money }}</div>
-      <div class="ict-kpi-sub">{{ results.baseline.sku_locations_at_stockout_risk }} SKU-locations at stockout risk</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="ict-card">
-      <div class="ict-kpi-label">Scenario Safety Stock Value</div>
-      <div class="ict-kpi-value">{{ results.scenario.safety_stock_value | money }}</div>
-      <div class="ict-kpi-sub">{{ results.scenario.sku_locations_at_stockout_risk }} SKU-locations at stockout risk</div>
-    </div>
-  </div>
-  <div class="col-md-4">
-    <div class="ict-card">
-      <div class="ict-kpi-label">Delta</div>
-      <div class="ict-kpi-value">{{ results.delta.working_capital_change | money }}</div>
-      <div class="ict-kpi-sub">Stockout risk change: {{ results.delta.stockout_risk_change }}</div>
-    </div>
-  </div>
-</div>
-
-<div class="ict-card">
-  <div class="fw-bold mb-2">Detail ({{ results.items_evaluated }} SKU-locations evaluated, {{ results.runtime_ms }}ms)</div>
-  <table class="table table-ict mb-0">
-    <thead><tr><th>SKU</th><th>Location</th><th>Baseline SS</th><th>Scenario SS</th><th>Baseline LT Demand</th><th>Scenario LT Demand</th><th>Available</th></tr></thead>
-    <tbody>
-      {% for d in results.detail %}
-      <tr>
-        <td>{{ d.sku }}</td><td>{{ d.location }}</td>
-        <td>{{ d.baseline_safety_stock | num }}</td><td>{{ d.scenario_safety_stock | num }}</td>
-        <td>{{ d.baseline_lead_time_demand | num }}</td><td>{{ d.scenario_lead_time_demand | num }}</td>
-        <td>{{ d.available | num }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
+<div class="page-head"><div><h1>{{ s.scenario_no }} · {{ s.name }}</h1><p>{{ s.description }} <span class="badge NORMAL">✓ Production data not modified</span></p></div><div style="display:flex;gap:8px"><a class="btn" href="{{ url_for('scenarios.compare', ids=s.id) }}">Compare</a><a class="btn" href="{{ url_for('reports.view', slug='scenario', scenario_id=s.id) }}">Report</a><a class="btn" href="{{ url_for('scenarios.lab') }}">← Lab</a></div></div>
+<section class="card mb"><h2>Governance record {{ tip('Every scenario stores ID, creator, base dataset, assumptions, changes, results and timestamp. The simulator works on copies of the operational snapshot.') }}</h2><dl class="kv"><dt>Scenario ID</dt><dd>{{ s.scenario_no }}</dd><dt>Created by / at</dt><dd>{{ s.created_by }} · {{ s.created_at|dt(true) }}</dd><dt>Base dataset</dt><dd>{{ s.base_dataset }}</dd><dt>Simulation</dt><dd>{{ s.time_step_days }}-day steps · {{ s.horizon_days }} days · {{ s.runs }} Monte-Carlo runs · seed {{ s.seed }}</dd><dt>Changes</dt><dd>{% for c in s.changes %}<div><b>{{ types[c.type].label }}</b> <span class="mono">{{ c.params }}</span></div>{% else %}none (baseline sandbox){% endfor %}</dd><dt>Assumptions</dt><dd class="small mono">{{ s.assumptions }}</dd></dl></section>
+<h3>Impact vs baseline</h3>
+<div class="kpis mb">{% for d in deltas %}{{ kpi(labels[d.metric], (d.scenario|pct(1)) if d.metric in ('service_level','stockout_probability') else (d.scenario|num(0) if d.metric in ('pairs_at_risk','carbon_kg') else d.scenario|money), 'Δ ' ~ ((d.delta|pct(1)) if d.metric in ('service_level','stockout_probability') else (d.delta|num(0) if d.metric in ('pairs_at_risk','carbon_kg') else d.delta|money)) ~ (' (' ~ (d.delta_pct*100)|round(1) ~ '%)' if d.delta_pct is not none else '')) }}{% endfor %}</div>
+<div class="grid g4 mb">{% for f in figs %}<div class="card" style="padding:8px">{{ plot(f, 'cmp' ~ loop.index, 200) }}</div>{% endfor %}</div>
+<div class="grid g2 mb"><section class="card"><h2>Inventory value over time</h2>{% if series %}{{ plot(series, 'sv', 280) }}{% endif %}</section><section class="card"><h2>SKU-locations expected to stock out</h2>{% if series2 %}{{ plot(series2, 'so', 280) }}{% endif %}</section></div>
+<section class="card mb"><h2>Metric table</h2>{{ table('dl', [{'k':'metric','l':'Metric'},{'k':'baseline','l':'Baseline','t':'num','d':2},{'k':'scenario','l':'Scenario','t':'num','d':2},{'k':'delta','l':'Delta','t':'num','d':2},{'k':'delta_pct','l':'Delta %','t':'pct'}], deltas, group=false, name='scenario-deltas') }}</section>
+<section class="card"><h2>Most affected SKU-locations (scenario)</h2>{{ table('bp', [{'k':'sku','l':'SKU','t':'link','href':'/inventory/sku/{sku}?loc={node}'},{'k':'node','l':'Node'},{'k':'stockout_prob','l':'Period stock-out rate','t':'pct','d':0},{'k':'service','l':'Service','t':'pct'},{'k':'unmet','l':'Unmet units','t':'num'},{'k':'revenue_risk','l':'Revenue risk','t':'money'},{'k':'avg_inv_value','l':'Avg inv. value','t':'money'}], by_pair, group=false, name='scenario-pairs') }}</section>
 {% endblock %}

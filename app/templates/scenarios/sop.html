@@ -1,0 +1,9 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}S&OP / IBP{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>S&amp;OP / IBP inventory view</h1><p>Demand, supply, inventory, capacity, gap and financial impact for <b>Baseline · Consensus · Upside (+{{ (s.assumptions.upside_pct*100)|round(0)|int }}%) · Downside (−{{ (s.assumptions.downside_pct*100)|round(0)|int }}%)</b> over six months. Cases are configurable in Settings (sop.upside_pct / sop.downside_pct).</p></div></div>
+<div class="grid g3 mb"><section class="card"><h2>Demand value</h2>{{ plot(f_dem, 'sd', 260) }}</section><section class="card"><h2>Ending inventory value</h2>{{ plot(f_inv, 'si', 260) }}</section><section class="card"><h2>Unfunded gap (value)</h2>{{ plot(f_gap, 'sg', 260) }}</section></div>
+<section class="card mb"><h2>Case totals (6 months)</h2>{{ table('tot', [{'k':'case','l':'Case'},{'k':'demand_value','l':'Demand value','t':'money'},{'k':'margin','l':'Margin','t':'money'},{'k':'gap_value','l':'Gap (unfunded)','t':'money'},{'k':'carrying_cost','l':'Carrying cost','t':'money'},{'k':'ending_inventory','l':'Ending inventory','t':'money'}], totals, group=false, export=false) }}<p class="small muted">Opening inventory {{ s.opening_inventory|money }}. {{ s.note }}</p></section>
+<section class="card"><h2>Monthly detail</h2>{{ table('sopd', [{'k':'case','l':'Case','t':'badge'},{'k':'label','l':'Month'},{'k':'demand_units','l':'Demand units','t':'num'},{'k':'demand_value','l':'Demand value','t':'money'},{'k':'cogs','l':'COGS','t':'money'},{'k':'supply_value','l':'Supply (receipts)','t':'money'},{'k':'ending_inventory','l':'Ending inventory','t':'money'},{'k':'gap_value','l':'Gap','t':'money'},{'k':'margin','l':'Margin','t':'money'},{'k':'utilisation','l':'Storage utilisation (approx.)','t':'pct','d':0}], rows, name='sop') }}</section>
+{% endblock %}

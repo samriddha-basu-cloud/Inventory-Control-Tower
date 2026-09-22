@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}Forecast → Inventory{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Forecast → inventory decision chain</h1><p><b>Forecast → demand distribution → safety stock → reorder point → inventory position → replenishment → supply → service level.</b> Change the forecast and watch every downstream figure move. Nothing is saved.</p></div></div>
+<div class="card mb"><form method="get" class="form-grid"><div><label>SKU</label><input type="text" name="sku" value="{{ sku or '' }}" list="cp" required></div><div><label>Location</label><input type="text" name="loc" value="{{ loc or '' }}" required></div><div><label>Forecast change %</label><input type="number" step="any" name="pct" value="{{ pct }}"></div><div><button class="btn primary">Simulate</button></div></form>{% if pairs %}<datalist id="cp">{% for s, l in pairs %}<option value="{{ s }}">{% endfor %}</datalist>{% endif %}</div>
+{% if chain %}<div class="card"><h2>{{ chain.sku }} @ {{ chain.loc }} · forecast {{ '%+.0f'|format(chain.change_pct) }}%  ·  risk {{ badge(chain.risk_before) }} → {{ badge(chain.risk_after) }}</h2>{{ table('chain', [{'k':'step','l':'Step'},{'k':'before','l':'Before','t':'num','d':2},{'k':'after','l':'After','t':'num','d':2},{'k':'delta','l':'Δ','t':'num','d':2},{'k':'unit','l':'Unit'}], chain.rows, group=false, name='forecast-chain') }}</div>{% endif %}
+{% endblock %}

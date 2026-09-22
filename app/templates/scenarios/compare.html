@@ -1,33 +1,10 @@
-{% extends "base.html" %}
-{% block title %}Compare Scenarios{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}Scenario comparison{% endblock %}
 {% block content %}
-<div class="ict-section-title">Scenario Comparison</div>
-
-<form method="get" class="ict-card mb-4">
-  <label class="form-label small">Select scenarios to compare</label>
-  <select name="ids" class="form-select" multiple size="6" onchange="this.form.submit()">
-    {% for s in all_scenarios %}
-    <option value="{{ s.id }}" {{ 'selected' if s.id in ids }}>{{ s.name }} ({{ s.created_at.strftime('%d %b %H:%M') }})</option>
-    {% endfor %}
-  </select>
-  <div class="small text-muted mt-1">Ctrl/Cmd-click to select multiple.</div>
-</form>
-
-{% if comparison %}
-<div class="ict-card">
-  <table class="table table-ict mb-0">
-    <thead><tr><th>Scenario</th><th>Assumptions</th><th>Safety Stock Value</th><th>Stockout Risk Count</th></tr></thead>
-    <tbody>
-      {% for c in comparison %}
-      <tr>
-        <td>{{ c.name }}</td>
-        <td class="small">{{ c.assumptions }}</td>
-        <td>{{ c.safety_stock_value | money }}</td>
-        <td>{{ c.stockout_risk_count }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-{% endif %}
+<div class="page-head"><div><h1>Scenario comparison</h1><p>BASELINE vs Scenario A vs Scenario B with deltas for inventory, service, stock-out, working capital, cost, carbon and revenue risk. Pick up to three saved scenarios.</p></div></div>
+<div class="card mb"><form method="get" class="form-grid"><div style="grid-column:1/-1"><label>Scenarios (hold Ctrl/Cmd for several; first one sets the baseline)</label><select multiple size="6" onchange="this.form.ids.value=Array.from(this.selectedOptions).map(o=>o.value).join(',')">{% for a in all %}<option value="{{ a.id }}" {{ 'selected' if a in scen }}>{{ a.scenario_no }} · {{ a.name }}</option>{% endfor %}</select><input type="hidden" name="ids" value="{{ scen|map(attribute='id')|join(',') }}"></div><div><button class="btn primary">Compare</button></div></form></div>
+{% if scen %}<div class="grid g4 mb">{% for f in figs %}<div class="card" style="padding:8px">{{ plot(f, 'cf' ~ loop.index, 230) }}</div>{% endfor %}</div>
+<div class="card"><table class="dt"><thead><tr><th>Metric</th><th class="num">Baseline</th>{% for s in scen %}<th class="num">{{ s.scenario_no }}<br><span class="muted">{{ s.name }}</span></th><th class="num">Δ vs baseline</th>{% endfor %}</tr></thead><tbody>
+{% for r in rows %}<tr><td>{{ r.metric }}</td><td class="num">{{ (r.baseline|pct(1)) if r.key in ('service_level','stockout_probability') else r.baseline|num(0) }}</td>{% for s in scen %}{% set j = loop.index0 %}<td class="num">{{ (r['s'~j]|pct(1)) if r.key in ('service_level','stockout_probability') else r['s'~j]|num(0) }}</td><td class="num"><b>{{ ('%+.1f pp'|format(r['d'~j]*100)) if r.key in ('service_level','stockout_probability') else ('%+,.0f'|format(r['d'~j])) }}</b></td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% endif %}
 {% endblock %}

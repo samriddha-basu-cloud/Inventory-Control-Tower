@@ -1,0 +1,93 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, plot, table, badge, tip, empty_state, post_button %}
+{% block title %}Control Tower{% endblock %}
+{% block content %}
+{% if empty %}
+  <div class="page-head"><div><h1>Inventory Control Tower</h1><p>From Inventory Visibility to Autonomous Inventory Decisions.</p></div></div>
+  <div class="card empty" style="padding:44px">
+    <h2>No inventory data yet</h2>
+    <p>ICT unifies visibility, analytics, optimisation, risk, scenarios and human-in-the-loop actions. Start with synthetic data for seven industries, or load your own files.</p>
+    <form method="post" action="{{ url_for('main.load_demo') }}" class="form-grid" style="max-width:720px;margin:14px auto;text-align:left">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <div style="grid-column:1/-1"><b>Industries to load</b></div>
+      {% for code, label in industries.items() %}<label class="inline"><input type="checkbox" name="industries" value="{{ code }}" checked> {{ label }}</label>{% endfor %}
+      <div style="grid-column:1/-1"><button class="btn primary">LOAD DEMO NETWORK</button> <a class="btn" href="{{ url_for('datahub.home') }}">Import my own data</a></div>
+    </form>
+  </div>
+{% else %}
+<div class="page-head">
+  <div><h1>Control Tower</h1><p>SEE → UNDERSTAND → PREDICT → OPTIMIZE → RECOMMEND → APPROVE → EXECUTE → LEARN. Every figure is derived from the canonical ledger, orders, forecasts and configurable policies.</p></div>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    {{ post_button(url_for('main.detect'), '↻ Run detection', 'btn') }}
+    {% if has_perm('admin') %}<form method="post" action="{{ url_for('main.load_demo') }}" data-confirm="Reload the demo network? This replaces all operational data (configuration is kept)."><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn">⟲ Reload demo</button></form>{% endif %}
+  </div>
+</div>
+
+<div class="kpis mb">
+  {{ kpi('Inventory value', tot.on_hand_value|money, 'on-hand at cost', None, 'Physical on-hand stock valued at unit cost across all counted states.', url_for('inventory.explorer')) }}
+  {{ kpi('Service level', kp.service_level|kpival, 'lines filled in full (90 d)', kp.service_level.status, 'Share of order lines shipped in full at first shipment. Configurable in Settings → KPIs.', url_for('inventory.health')) }}
+  {{ kpi('Stock-out risk', kp.stockout_risk|kpival, tot.at_risk_pairs|int|string ~ ' SKU-locations HIGH/CRITICAL', kp.stockout_risk.status, 'Demand-value-weighted probability of running out during replenishment lead time.', url_for('risk.center')) }}
+  {{ kpi('Excess value', tot.excess_value|money, kp.excess_pct|kpival ~ ' of inventory', kp.excess_pct.status, 'Stock above policy max level and the days-of-supply threshold.', url_for('finance.financial')) }}
+  {{ kpi('Days of inventory (DIO)', kp.dio|kpival, 'turns ' ~ (kp.inventory_turns|kpival), kp.dio.status, 'DIO = 365 × average inventory value ÷ annualised COGS.', url_for('inventory.health')) }}
+  {{ kpi('Inventory turns', kp.inventory_turns|kpival, 'annualised COGS ÷ avg inventory', kp.inventory_turns.status, 'COGS from customer-facing item-locations only (avoids double counting through the network).') }}
+</div>
+
+<div class="grid g-main mb">
+  <div class="card">
+    <div class="card-head"><div><h2>Network map {{ tip('Nodes: size = inventory value; colour AND symbol = worst stock-out risk (● low ◆ medium ▲ high ✖ critical). Click a node to open Location 360.') }}</h2><div class="sub">Supplier → plant → DC → store/line-side · solid = supply, dotted = transfer, dashed = shipment</div></div><a class="btn sm" href="{{ url_for('network.view') }}">Open network ↗</a></div>
+    {{ plot(net_fig, 'net-home', 420) }}
+  </div>
+  <div style="display:grid;gap:14px;align-content:start">
+    <section class="card">
+      <div class="card-head"><div><h2>ICT Inventory Health Index {{ tip(health.formula) }}</h2><div class="sub">0–100 · ICT-defined composite (not an industry standard)</div></div></div>
+      <div style="display:flex;align-items:center;gap:14px"><div style="font-size:2.6rem;font-weight:700">{{ health.index|round(0)|int }}</div><div>{{ badge(health.status, health.label) }}<div class="small muted">{% if health.missing %}No data for: {{ health.missing|join(', ') }}{% else %}All nine components measured{% endif %}</div></div></div>
+      {% for c in health.components if c.has_data %}<div class="small" style="display:grid;grid-template-columns:130px 1fr 40px;gap:8px;align-items:center;margin-top:5px"><span>{{ c.label }}</span><div class="meter"><i style="width:{{ c.score|round(0) }}%"></i></div><span class="num">{{ c.score|round(0)|int }}</span></div>{% endfor %}
+    </section>
+    <section class="card">
+      <div class="card-head"><div><h2>Alert fatigue control</h2><div class="sub">Dedup → correlate → cluster → suppress → prioritise</div></div><a class="btn sm" href="{{ url_for('alerts.list_alerts') }}">Alerts ↗</a></div>
+      <div class="flow"><span class="node"><b>{{ fatigue.raw }}</b> raw alerts</span><span class="arrow">→</span><span class="node"><b>{{ fatigue.clustered }}</b> clustered into <b>{{ fatigue.incidents }}</b> incidents</span><span class="arrow">→</span><span class="node"><b>{{ fatigue.to_review }}</b> items to review</span></div>
+      <div class="small muted">{{ fatigue.suppressed }} suppressed by rules · last detection {{ last_detection[:16].replace('T',' ') if last_detection else 'never' }}</div>
+    </section>
+  </div>
+</div>
+
+<h3 class="mt">Inventory state (value)</h3>
+<div class="kpis mb">{% for label, v, tipt in states %}{{ kpi(label, v|money, '', None, tipt) }}{% endfor %}</div>
+
+<div class="grid g2 mb">
+  <div class="card"><div class="card-head"><div><h2>Inventory position by node (value) {{ tip('Physical stock is split into mutually exclusive buckets so nothing is double counted: available, claimed by orders, non-usable, and pipeline.') }}</h2></div></div>{{ plot(pos_fig, 'pos-home', 320) }}</div>
+  <div class="card"><div class="card-head"><div><h2>Risk heatmap (by location) {{ tip('Each cell shows the share of value/pairs at risk for that dimension. The percentage is printed in the cell, so colour is never the only cue.') }}</h2><div class="sub">Click through in Risk Center for SKU, supplier, family and region views</div></div><a class="btn sm" href="{{ url_for('risk.center') }}">Risk Center ↗</a></div>{{ plot(hm, 'hm-home', 320) }}</div>
+</div>
+
+<div class="grid g2 mb">
+  <section class="card">
+    <div class="card-head"><div><h2>Critical incidents</h2><div class="sub">Root-cause clusters ranked by Planner Priority Score</div></div><a class="btn sm" href="{{ url_for('alerts.incidents') }}">All incidents ↗</a></div>
+    {% for i in incidents %}
+      <div style="padding:8px 0;border-bottom:1px solid var(--grid)"><a href="{{ url_for('alerts.incident_detail', incident_id=i.id) }}"><b>{{ i.incident_no }}</b> · {{ i.title }}</a><div class="small muted">{{ badge(i.severity) }} priority {{ i.priority_score|round(0)|int }} · {{ i.impact.alerts }} alerts · revenue at risk {{ i.impact.revenue_at_risk|money }} · {{ i.impact.affected_skus|length }} SKUs</div></div>
+    {% else %}<p class="muted">No open incidents.</p>{% endfor %}
+  </section>
+  <section class="card">
+    <div class="card-head"><div><h2>Recommended actions</h2><div class="sub">Explainable, simulated and policy-checked before approval</div></div><a class="btn sm" href="{{ url_for('actions.center') }}">Action Center ↗</a></div>
+    {% for r in recs %}
+      <div style="padding:8px 0;border-bottom:1px solid var(--grid)"><a href="{{ url_for('actions.recommendation', rec_id=r.id) }}"><b>{{ r.rec_no }}</b> · {{ r.title }}</a><div class="small muted">{{ badge(r.kind) }} confidence {{ (r.confidence*100)|round(0)|int }}% · cost {{ r.cost|money }}</div></div>
+    {% else %}<p class="muted">No open recommendations.</p>{% endfor %}
+  </section>
+</div>
+
+<h3>Operational KPIs by area <span class="small muted">(status uses Normal / Watch / Attention / Critical with icons; thresholds are configurable)</span></h3>
+<div class="grid g3 mb">
+{% for area, codes in groups.items() %}
+  <section class="card"><div class="card-head"><h2>{{ area }}</h2></div>
+    {% for c in codes if kp.get(c) %}<div style="display:flex;justify-content:space-between;gap:8px;padding:5px 0;border-bottom:1px solid var(--grid)"><span>{{ kp[c].name }} {{ tip(kp[c].description ~ ' · Formula: ' ~ kp[c].formula) }}</span><span style="white-space:nowrap"><b>{{ kp[c]|kpival }}</b> {{ badge(kp[c].status) if kp[c].status != 'NODATA' else '' }}</span></div>{% endfor %}
+  </section>
+{% endfor %}
+</div>
+
+<div class="grid g4 mb">
+  <section class="card"><h3>Financial impact</h3>{{ plot(fin_fig, 'fin-home', 260) }}</section>
+  <section class="card"><h3>Carbon (estimate) {{ tip(carb.disclaimer) }}</h3>{{ plot(carb_fig, 'carb-home', 260) }}<div class="small muted">Pipeline freight {{ (carb.pipeline_co2e_kg/1000)|round(1) }} t CO2e · expedited {{ (carb.expedited_co2e_kg/1000)|round(1) }} t · returns {{ carb.return_units|num }} units · reusable assets {{ carb.assets_available|num }}</div></section>
+  <section class="card"><h3>Inventory value trend {{ tip('Weekly snapshots. History before today is synthetic in demo mode (flagged source=DEMO).') }}</h3>{% if trend %}{{ plot(trend, 'trend-home', 260) }}{% else %}<p class="muted">No history yet.</p>{% endif %}</section>
+  <section class="card"><h3>Service level trend</h3>{% if svc_trend %}{{ plot(svc_trend, 'svc-home', 260) }}{% else %}<p class="muted">No history yet.</p>{% endif %}</section>
+</div>
+{% endif %}
+{% endblock %}

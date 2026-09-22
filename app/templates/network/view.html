@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, plot, empty_state %}
+{% block title %}Network{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Multi-echelon network</h1><p>Supplier → plant → central DC → regional DC → store/customer, any depth. Node size = inventory value; risk is shown by colour <b>and</b> marker shape. Click a node to open Location 360; filters (global bar) apply.</p></div>
+<form method="get" data-autosubmit><label class="inline">Product view <select name="sku"><option value="">All SKUs</option>{% for s in skus %}<option {{ 'selected' if s == sku }}>{{ s }}</option>{% endfor %}</select></label></form></div>
+{% if empty %}{{ empty_state() }}{% else %}
+<div class="card mb">{{ plot(fig, 'net', 520) }}<div class="small muted">{{ rows|length }} nodes · {{ n_edges }} flows · solid = supply route, dotted = transfer, dashed = shipment in flight.</div></div>
+<div class="card"><h2>Node metrics {{ tip('On-hand, available, inbound, outbound (planned transfers out), safety stock, demand per day, risk and capacity utilisation for each node.') }}</h2>
+{{ table('nodes', [{'k':'code','l':'Node','t':'link','href':'/inventory/location/{code}'},{'k':'name','l':'Name'},{'k':'type','l':'Type'},{'k':'region','l':'Region'},{'k':'echelon','l':'Echelon','t':'num'},{'k':'on_hand','l':'On hand','t':'num'},{'k':'available','l':'Available','t':'num'},{'k':'inbound','l':'Inbound','t':'num'},{'k':'outbound','l':'Outbound','t':'num'},{'k':'ss','l':'Safety stock','t':'num'},{'k':'demand','l':'Demand/day','t':'num'},{'k':'risk','l':'Risk','t':'badge'},{'k':'at_risk','l':'HIGH/CRIT SKUs','t':'num'},{'k':'utilization','l':'Capacity util.','t':'pct','d':0},{'k':'value','l':'Value','t':'money'}], rows, name='network-nodes') }}</div>
+{% endif %}{% endblock %}

@@ -1,70 +1,53 @@
-"""Network rebalancing engine (section 47) — match surplus nodes to deficit
-nodes for the same SKU, minimizing transfer + expedite cost while resolving
-shortage risk."""
+"""Multi-objective scoring and network-level balancing.
+
+ObjectiveFunction keeps the objective transparent: each term has a sense (min/max), a configurable weight, and
+a measured value; `evaluate()` returns the scalar (lower is better; 'max' terms enter negatively) plus a table
+(Objective | Weight | Constraint | Result) that the UI shows verbatim.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+
+DEFAULT_TERMS = {
+    "stockouts": {"label": "Stock-outs (expected lost margin)", "sense": "min"},
+    "holding": {"label": "Holding cost", "sense": "min"},
+    "expedite": {"label": "Expedite / freight cost", "sense": "min"},
+    "obsolescence": {"label": "Obsolescence exposure", "sense": "min"},
+    "working_capital": {"label": "Working capital (cash tied up)", "sense": "min"},
+    "carbon": {"label": "Carbon (priced kg CO2e)", "sense": "min"},
+    "service": {"label": "Service level", "sense": "max"},
+}
 
 
-def identify_surplus_deficit(node_positions, target_dos_days=14):
-    """
-    node_positions: list of dict(location, available, avg_demand_daily)
-    Returns nodes classified as surplus/deficit vs a target days-of-supply.
-    """
-    classified = []
-    for n in node_positions:
-        dos = (n["available"] / n["avg_demand_daily"]) if n["avg_demand_daily"] > 0 else float("inf")
-        if dos == float("inf"):
-            status = "surplus" if n["available"] > 0 else "neutral"
-        elif dos > target_dos_days * 1.5:
-            status = "surplus"
-        elif dos < target_dos_days * 0.5:
-            status = "deficit"
-        else:
-            status = "neutral"
-        classified.append({**n, "days_of_supply": None if dos == float("inf") else round(dos, 1),
-                            "status": status})
-    return classified
+@dataclass
+class ObjectiveFunction:
+    weights: dict = field(default_factory=dict)
+    carbon_price: float = 4.0           # currency per kg CO2e - a configurable internal shadow price, not a market price
+    service_value: float = 0.0          # currency value of one full service-level point (0 = ignore)
+
+    def evaluate(self, metrics: dict, constraints: dict | None = None) -> dict:
+        """metrics keys: stockouts, holding, expedite, obsolescence, working_capital, carbon_kg, service."""
+        table, total = [], 0.0
+        for key, spec in DEFAULT_TERMS.items():
+            w = float(self.weights.get(key, 1.0))
+            val = metrics.get("carbon_kg" if key == "carbon" else key, 0.0) or 0.0
+            money = val * self.carbon_price if key == "carbon" else (val * self.service_value if key == "service" else val)
+            contrib = (-1 if spec["sense"] == "max" else 1) * w * money
+            if key == "service" and not self.service_value:
+                contrib = 0.0
+            total += contrib
+            table.append({"objective": spec["label"], "sense": spec["sense"], "weight": w, "raw": val, "contribution": contrib,
+                          "constraint": (constraints or {}).get(key)})
+        return {"score": total, "table": table}
 
 
-def recommend_transfers(classified_nodes, target_dos_days=14, transit_days_matrix=None,
-                         cost_per_unit_matrix=None):
-    """
-    Greedily match the largest deficits with the largest surpluses for the
-    same SKU. transit_days_matrix / cost_per_unit_matrix: dict[(src,dst)] -> value.
-    """
-    transit_days_matrix = transit_days_matrix or {}
-    cost_per_unit_matrix = cost_per_unit_matrix or {}
-
-    surplus = sorted(
-        [n for n in classified_nodes if n["status"] == "surplus"],
-        key=lambda n: n["available"] - n["avg_demand_daily"] * target_dos_days, reverse=True,
-    )
-    deficit = sorted(
-        [n for n in classified_nodes if n["status"] == "deficit"],
-        key=lambda n: n["avg_demand_daily"] * target_dos_days - n["available"], reverse=True,
-    )
-
-    surplus_pool = {s["location"]: s["available"] - s["avg_demand_daily"] * target_dos_days for s in surplus}
-    recommendations = []
-    for d in deficit:
-        need = d["avg_demand_daily"] * target_dos_days - d["available"]
-        for s_loc, s_avail in list(surplus_pool.items()):
-            if need <= 0:
-                break
-            if s_avail <= 0:
-                continue
-            qty = min(need, s_avail)
-            if qty <= 0:
-                continue
-            transit_days = transit_days_matrix.get((s_loc, d["location"]), 3)
-            cost_per_unit = cost_per_unit_matrix.get((s_loc, d["location"]), 0.0)
-            recommendations.append({
-                "source": s_loc,
-                "destination": d["location"],
-                "quantity": round(qty, 2),
-                "transit_days": transit_days,
-                "transport_cost": round(qty * cost_per_unit, 2),
-                "reason": (f"{d['location']} projected DOS is low while {s_loc} holds surplus "
-                           f"beyond the {target_dos_days}-day target."),
-            })
-            surplus_pool[s_loc] -= qty
-            need -= qty
-    return recommendations
+def balance_network(per_item: list[dict], solver, **kw) -> dict:
+    """per_item: [{'item': sku, 'donors':[...], 'receivers':[...], 'arcs':{...}}]; runs `solver` per item and aggregates."""
+    plans, cost, unmet, flows = [], 0.0, 0.0, 0
+    for it in per_item:
+        res = solver(it["donors"], it["receivers"], it["arcs"], **kw)
+        plans.append({"item": it["item"], **res})
+        cost += res.get("total_cost") or 0.0
+        unmet += sum(res.get("unmet", {}).values())
+        flows += len(res.get("flows", []))
+    return {"plans": plans, "total_cost": cost, "total_unmet": unmet, "transfers": flows}

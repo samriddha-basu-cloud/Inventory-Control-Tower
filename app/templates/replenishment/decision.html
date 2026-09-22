@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, explain %}
+{% block title %}Decision options{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Inventory decision explainer &amp; options</h1><p>Every recommendation shows <b>why</b> (dynamic inputs), the <b>alternatives</b> with constraint violations, an engine-computed <b>after</b> state, cost, carbon and the visible objective. Nothing executes without simulation → policy check → approval.</p></div></div>
+<div class="card mb"><form method="get" class="form-grid"><div><label>SKU</label><input type="text" name="sku" value="{{ sku or '' }}" required></div><div><label>Location</label><input type="text" name="loc" value="{{ loc or '' }}" required></div><div><button class="btn primary">Analyse</button></div></form></div>
+{% if res %}
+<div class="grid g-main mb"><section class="card"><h2>{{ expl.headline }} <span class="muted small">· {{ sku }} @ {{ loc }}</span></h2>{{ explain(expl.rows) }}<p class="small muted">{{ expl.formula }}</p></section>
+<section class="card"><h2>Confidence &amp; data quality</h2><div class="kpis">{{ kpi('Confidence', (r.confidence*100)|round(0)|int|string ~ '%', 'linked to data, not arbitrary') }}{{ kpi('Data quality', (r.data_quality*100)|round(0)|int|string ~ '%') }}</div>{% for p in r.confidence_parts %}<div class="small" style="display:grid;grid-template-columns:160px 1fr 38px;gap:6px;align-items:center;margin-top:5px"><span>{{ p.name }} <span class="muted">(w {{ p.weight }})</span> {{ tip(p.why) }}</span><div class="meter"><i style="width:{{ (p.score*100)|round(0) }}%"></i></div><span class="num">{{ (p.score*100)|round(0)|int }}</span></div>{% endfor %}<p class="small muted">Confidence = Σ weight × component (completeness, freshness, stability, model performance, constraint completeness).</p></section></div>
+{% if res.note %}<div class="banner warn">{{ res.note }}</div>{% endif %}
+<h2>Options <span class="muted small">objective = holding + freight/ordering + expected stock-out cost + priced carbon + working capital, weights {{ res.weights }}</span></h2>
+<div class="grid g2">{% for o in res.options %}
+<section class="card opt {{ 'best' if res.recommended and o.type == res.recommended.type and o.label == res.recommended.label else '' }} {{ '' if o.feasible else 'bad' }}">
+ <div class="card-head"><div><h2>{{ o.label }}</h2><div class="sub">{{ o.type.replace('_',' ').title() }}{% if o.qty %} · qty {{ o.qty|num }}{% endif %}{% if o.arrival_days is not none %} · arrives in {{ o.arrival_days }} d{% endif %}</div></div><div>{{ badge('FEASIBLE' if o.feasible else 'BLOCKED', 'Feasible' if o.feasible else 'Constraint violated') }}{% if res.recommended and o.type == res.recommended.type and o.label == res.recommended.label %} {{ badge('RECOMMENDED','Recommended') }}{% endif %}</div></div>
+ {% if o.violations %}<div class="banner crit">{% for v in o.violations %}<div>✖ {{ v }}</div>{% endfor %}</div>{% endif %}
+ <table class="dt" style="font-size:.82rem"><thead><tr><th></th><th class="num">Current</th><th class="num">After</th></tr></thead><tbody>
+  <tr><td>Stock-out probability</td><td class="num">{{ r.stockout_prob|pct(0) }}</td><td class="num">{{ o.after.stockout_prob|pct(0) }}</td></tr>
+  <tr><td>Expected shortage</td><td class="num">{{ r.exp_short|num }}</td><td class="num">{{ o.after.exp_short|num }}</td></tr>
+  <tr><td>Inventory position</td><td class="num">{{ r.pos.position|num }}</td><td class="num">{{ o.after.position|num }}</td></tr>
+  <tr><td>Inventory value</td><td class="num">{{ r.on_hand_value|money }}</td><td class="num">{{ o.after.on_hand_value|money }}</td></tr>
+  <tr><td>Cash outlay / incremental cost</td><td class="num">–</td><td class="num">{{ o.cash_outlay|money }} / <b>{{ o.incremental_cost|money }}</b></td></tr>
+  <tr><td>Carbon (est.)</td><td class="num">–</td><td class="num">{{ o.carbon_kg|num }} kg CO2e</td></tr>
+  <tr><td>Risk level</td><td class="num">{{ badge(r.risk_level) }}</td><td class="num">{{ badge(o.after.risk_level) }}</td></tr></tbody></table>
+ <div class="small muted">Objective {{ o.objective.score|money }}: {% for k, v in o.objective.terms.items() %}{{ k }} {{ v|money }}{{ ' · ' if not loop.last }}{% endfor %}{% for n in o.notes %} · {{ n }}{% endfor %}</div>
+ {% if o.type != 'DO_NOTHING' and has_perm('create_action') %}<form method="post" action="{{ url_for('replenishment.act') }}" style="margin-top:8px"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="sku" value="{{ sku }}"><input type="hidden" name="loc" value="{{ loc }}"><input type="hidden" name="option" value="{{ loop.index0 }}"><button class="btn primary sm">Create action (simulate → policy → approval)</button></form>{% endif %}
+</section>{% endfor %}</div>
+{% endif %}{% endblock %}

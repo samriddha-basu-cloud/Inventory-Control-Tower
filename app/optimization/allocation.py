@@ -1,77 +1,39 @@
+"""Constrained allocation under scarcity (LP).
+
+    maximise   Σ w_j · x_j                          (w_j = composite priority score of demand j)
+    subject to Σ x_j ≤ S                            (supply)
+               0 ≤ x_j ≤ d_j                        (never over-allocate a demand)
+               x_j ≥ floor_j                        (optional minimum-fill guarantee, share of min(d_j, fair share))
+
+With floors the model spreads scarce stock instead of starving low-priority demands completely.
+If the floors alone exceed supply the problem is infeasible and the result explains by how much.
 """
-Allocation Engine (sections 45-46) — when supply is constrained across
-competing demands, decide who gets what.
-"""
+from __future__ import annotations
+
+import numpy as np
+from scipy.optimize import linprog
 
 
-def fifo_allocate(demands, available_supply):
-    """demands: list of dict(id, quantity, order_date). Earliest order_date first."""
-    ordered = sorted(demands, key=lambda d: d["order_date"])
-    return _sequential_allocate(ordered, available_supply, rule="fifo")
-
-
-def priority_allocate(demands, available_supply, priority_key="priority_weight"):
-    """Higher priority_weight served first."""
-    ordered = sorted(demands, key=lambda d: d.get(priority_key, 1.0), reverse=True)
-    return _sequential_allocate(ordered, available_supply, rule="priority")
-
-
-def proportional_allocate(demands, available_supply):
-    """Fair-share: every demand gets the same % of what it asked for."""
-    total_demand = sum(d["quantity"] for d in demands)
-    results = []
-    if total_demand <= 0:
-        return {"rule": "proportional", "allocations": [], "total_demand": 0,
-                "total_allocated": 0, "total_unfulfilled": 0}
-    ratio = min(1.0, available_supply / total_demand)
-    total_allocated = 0.0
-    for d in demands:
-        alloc = round(d["quantity"] * ratio, 2)
-        total_allocated += alloc
-        results.append({**d, "allocated_quantity": alloc,
-                         "unfulfilled_quantity": round(d["quantity"] - alloc, 2)})
-    return {
-        "rule": "proportional",
-        "fill_ratio_pct": round(ratio * 100, 1),
-        "allocations": results,
-        "total_demand": round(total_demand, 2),
-        "total_allocated": round(total_allocated, 2),
-        "total_unfulfilled": round(total_demand - total_allocated, 2),
-    }
-
-
-def margin_allocate(demands, available_supply, margin_key="margin_per_unit"):
-    ordered = sorted(demands, key=lambda d: d.get(margin_key, 0.0), reverse=True)
-    return _sequential_allocate(ordered, available_supply, rule="margin")
-
-
-def _sequential_allocate(ordered_demands, available_supply, rule):
-    remaining = available_supply
-    results = []
-    total_demand = 0.0
-    total_allocated = 0.0
-    for d in ordered_demands:
-        qty = d["quantity"]
-        total_demand += qty
-        alloc = min(qty, max(remaining, 0))
-        remaining -= alloc
-        total_allocated += alloc
-        results.append({**d, "allocated_quantity": round(alloc, 2),
-                         "unfulfilled_quantity": round(qty - alloc, 2)})
-    return {
-        "rule": rule,
-        "allocations": results,
-        "total_demand": round(total_demand, 2),
-        "total_allocated": round(total_allocated, 2),
-        "total_unfulfilled": round(total_demand - total_allocated, 2),
-        "supply_remaining": round(max(remaining, 0), 2),
-    }
-
-
-ALLOCATION_RULES = {
-    "fifo": fifo_allocate,
-    "priority_customer": priority_allocate,
-    "proportional": proportional_allocate,
-    "fair_share": proportional_allocate,
-    "margin": margin_allocate,
-}
+def solve_allocation(supply: float, demands: list[dict], min_fill: float = 0.0) -> dict:
+    """demands: [{'id','qty','score'}]. Returns {'status','allocations':{id:qty},'explanation'}."""
+    n = len(demands)
+    if n == 0 or supply <= 0:
+        return {"status": "OPTIMAL", "allocations": {d["id"]: 0.0 for d in demands}, "unmet": {d["id"]: d["qty"] for d in demands},
+                "explanation": "No supply or no demand.", "objective": 0.0}
+    d = np.array([x["qty"] for x in demands], float)
+    w = np.array([max(x.get("score", 0.0), 1e-6) for x in demands], float)
+    fair = supply / n
+    floor = np.minimum(d, fair) * min_fill
+    if floor.sum() > supply + 1e-9:
+        return {"status": "INFEASIBLE", "allocations": {}, "unmet": {},
+                "explanation": f"Minimum-fill guarantees need {floor.sum():,.0f} units but only {supply:,.0f} are available. "
+                               f"Lower the minimum-fill share below {supply / max(floor.sum() / max(min_fill, 1e-9), 1e-9):.0%} or add supply.",
+                "objective": None}
+    res = linprog(c=-w, A_ub=np.ones((1, n)), b_ub=[supply], bounds=list(zip(floor, d)), method="highs")
+    if not res.success:
+        return {"status": "INFEASIBLE", "allocations": {}, "unmet": {}, "explanation": res.message, "objective": None}
+    x = np.maximum(res.x, 0.0)
+    return {"status": "OPTIMAL", "allocations": {dm["id"]: float(x[i]) for i, dm in enumerate(demands)},
+            "unmet": {dm["id"]: float(d[i] - x[i]) for i, dm in enumerate(demands)},
+            "explanation": f"Allocated {x.sum():,.0f} of {supply:,.0f} available across {n} demands (min-fill {min_fill:.0%}).",
+            "objective": float(-res.fun)}

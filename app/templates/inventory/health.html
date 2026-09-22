@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}Inventory Health{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Inventory Health</h1><p>The <b>ICT Inventory Health Index</b> is a transparent, ICT-defined composite (not an industry standard). Every component, its weight and its scaling anchors are shown below; weights are configurable in Settings.</p></div></div>
+<div class="grid g-main mb">
+<section class="card"><div class="card-head"><h2>ICT Inventory Health Index</h2></div>
+ <div style="display:flex;gap:18px;align-items:center;margin-bottom:10px"><div style="font-size:3.2rem;font-weight:700">{{ hi.index|round(1) }}</div><div>{{ badge(hi.status, hi.label) }}<div class="small muted" style="max-width:520px">{{ hi.formula }}</div></div></div>
+ {{ table('hi', [{'k':'label','l':'Component'},{'k':'note','l':'Measured as'},{'k':'value','l':'Value','t':'num','d':3},{'k':'score','l':'Score (0–100)','t':'num','d':1},{'k':'weight','l':'Weight','t':'num','d':2},{'k':'contribution','l':'Contribution','t':'num','d':1}], hi.components, group=false, name='health-index') }}
+ {% if hi.missing %}<p class="small muted">No data for: {{ hi.missing|join(', ') }} - excluded from the weighted mean.</p>{% endif %}</section>
+<section class="card"><h3>Reading the score</h3><ul class="small"><li><b>≥ 80 Normal</b> ✓ healthy</li><li><b>65–80 Watch</b> ◔ drifting</li><li><b>50–65 Attention</b> ▲ needs action</li><li><b>&lt; 50 Critical</b> ✖ intervene</li></ul>
+<p class="small muted">Each component is a 0–100 linear score between a "worst" and "best" anchor (e.g. service level 80 %→0, 99 %→100). Components with no data are dropped, never guessed.</p></section></div>
+{% for area, codes in sections.items() %}
+<h3>{{ area }}</h3><div class="kpis mb">{% for c in codes if kp.get(c) %}{{ kpi(kp[c].name, kp[c]|kpival, (kp[c].window_days ~ ' d window'), kp[c].status if kp[c].status != 'NODATA' else None, kp[c].description ~ ' · Formula: ' ~ kp[c].formula) }}{% endfor %}</div>
+{% endfor %}
+<h3>Sustainability</h3><div class="kpis mb">{{ kpi('Pipeline freight CO2e', (carb.pipeline_co2e_kg/1000)|round(1)|string ~ ' t', 'estimate', None, carb.disclaimer) }}{{ kpi('Expedited freight CO2e', (carb.expedited_co2e_kg/1000)|round(1)|string ~ ' t', 'estimate') }}{{ kpi('Reverse-logistics units', carb.return_units|num) }}{{ kpi('Reusable assets available', carb.assets_available|num, 'of ' ~ carb.assets_total|num) }}</div>
+<div class="card"><h2>KPI definitions</h2><p class="small muted">Formulas are safe expressions over the measures below (administrators can edit them in Settings → KPI configuration).</p>
+{{ table('kpidefs', [{'k':'name','l':'KPI'},{'k':'category','l':'Area'},{'k':'formula','l':'Formula'},{'k':'window_days','l':'Window (d)','t':'num'},{'k':'watch','l':'Watch','t':'num','d':2},{'k':'attention','l':'Attention','t':'num','d':2},{'k':'critical','l':'Critical','t':'num','d':2},{'k':'status','l':'Status','t':'badge'}], kp.values()|list, name='kpi-definitions') }}</div>
+{% endblock %}

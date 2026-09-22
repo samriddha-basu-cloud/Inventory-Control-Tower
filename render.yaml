@@ -1,24 +1,26 @@
 services:
   - type: web
     name: inventory-control-tower
-    env: python
-    plan: starter
-    buildCommand: "pip install -r requirements.txt"
-    startCommand: "gunicorn run:app --bind 0.0.0.0:$PORT --workers 2 --threads 4 --timeout 120"
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn wsgi:app --workers 2 --threads 4 --timeout 120
+    healthCheckPath: /health
     envVars:
-      - key: SECRET_KEY
-        generateValue: true
       - key: ENVIRONMENT
         value: production
-      - key: DATABASE_URL
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL          # point at a Render PostgreSQL instance
         fromDatabase:
-          name: ict-postgres
+          name: ict-db
           property: connectionString
-      - key: UPLOAD_LIMIT_MB
-        value: "25"
-
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: AUTH_REQUIRED
+        value: "1"
+      - key: API_KEY
+        sync: false
 databases:
-  - name: ict-postgres
-    plan: starter
-    databaseName: ict
-    user: ict
+  - name: ict-db
+    plan: free

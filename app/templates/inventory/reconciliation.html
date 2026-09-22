@@ -1,0 +1,11 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}Reconciliation{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Inventory reconciliation</h1><p>ICT vs ERP / WMS / 3PL / physical counts. Flags: missing records, duplicates, negative stock, unit mismatch, location mismatch and timing differences. Tolerance {{ (rec.rules.tolerance_pct*100)|round(1) }}% or {{ rec.rules.tolerance_abs }} units (configurable).</p></div></div>
+<div class="kpis mb">{{ kpi('Match rate', rec.match_rate|pct(1), 'exact + within tolerance', 'NORMAL' if rec.match_rate >= 0.97 else ('WATCH' if rec.match_rate >= 0.93 else 'ATTENTION')) }}{% for s, c in rec.summary.items() %}{{ kpi(s|replace('_',' ')|title, c, '', None, None, url_for('inventory.reconciliation', status=s)) }}{% endfor %}</div>
+<div class="grid g2 mb"><section class="card"><h2>Records by status</h2>{{ plot(fig, 'rec', 240) }}</section>
+<section class="card"><h2>Data latency (last sync vs expected)</h2>{{ table('lat', [{'k':'source','l':'Source'},{'k':'last_sync','l':'Last sync','t':'date','time':true},{'k':'age_hours','l':'Age (h)','t':'num','d':1},{'k':'expected_hours','l':'Expected every (h)','t':'num'},{'k':'status','l':'Status','t':'badge'},{'k':'records','l':'Records','t':'num'}], lat, group=false, export=false) }}</section></div>
+<div class="card"><div class="tbl-tools"><a class="btn sm {{ '' if sel_system else 'primary' }}" href="?">All systems</a>{% for s in rec.by_system %}<a class="btn sm {{ 'primary' if sel_system == s }}" href="?system={{ s }}">{{ s }} ({{ rec.by_system[s].bad }}/{{ rec.by_system[s].records }} issues)</a>{% endfor %}{% if sel_status %}<a class="btn sm" href="?">clear status filter: {{ sel_status }}</a>{% endif %}</div>
+{{ table('recon', [{'k':'system','l':'System'},{'k':'sku','l':'SKU','t':'link','href':'/inventory/sku/{sku}'},{'k':'location','l':'Location'},{'k':'source_qty','l':'Source balance','t':'num','d':0},{'k':'ict_qty','l':'ICT balance','t':'num','d':0},{'k':'variance','l':'Variance','t':'num','d':0},{'k':'variance_pct','l':'Variance %','t':'pct'},{'k':'last_sync','l':'Last sync','t':'date','time':true},{'k':'status','l':'Status','t':'badge'},{'k':'note','l':'Note'}], rows, name='reconciliation') }}</div>
+{% endblock %}

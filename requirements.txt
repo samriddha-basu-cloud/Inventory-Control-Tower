@@ -1,13 +1,15 @@
 Flask==3.0.3
 Flask-SQLAlchemy==3.1.1
+Flask-Migrate==4.1.0
 SQLAlchemy==2.0.32
 python-dotenv==1.0.1
 pandas==2.2.2
 numpy==1.26.4
 scipy==1.13.1
-statsmodels==0.14.2
-scikit-learn==1.5.1
 plotly==5.23.0
 openpyxl==3.1.5
+reportlab==5.0.1
 gunicorn==22.0.0
 Werkzeug==3.0.3
+# PostgreSQL in production (optional locally):
+# psycopg2-binary==2.9.9

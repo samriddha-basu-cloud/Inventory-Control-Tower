@@ -1,31 +1,13 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, empty_state %}
 {% block title %}Replenishment{% endblock %}
 {% block content %}
-<div class="d-flex justify-content-between align-items-start mb-2">
-  <div>
-    <div class="ict-section-title">Replenishment Control Center</div>
-    <div class="ict-section-sub">{{ recs|length }} of {{ total_skus }} SKU-locations currently trigger a recommended order.</div>
-  </div>
-  <form method="post" action="{{ url_for('replenishment.generate') }}">
-    <button class="btn btn-sm btn-primary">Generate &amp; Send to Approval</button>
-  </form>
-</div>
-
-<div class="ict-card">
-<table class="table table-ict mb-0">
-  <thead><tr><th>SKU</th><th>Location</th><th>Policy</th><th>Position</th><th>Raw Qty</th><th>Recommended Qty</th></tr></thead>
-  <tbody>
-    {% for r in recs %}
-    <tr>
-      <td>{{ r.item }}</td><td>{{ r.location }}</td><td>{{ r.policy }}</td>
-      <td>{{ r.inventory_position | num }}</td>
-      <td>{{ r.raw_quantity | round(0) if r.raw_quantity else '—' }}</td>
-      <td><strong>{{ r.recommended_quantity | num }}</strong></td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6" class="text-muted">No replenishment triggers right now.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
-{% endblock %}
+<div class="page-head"><div><h1>Replenishment engine</h1><p>Twelve policies (Min-Max, ROP, fixed qty, periodic, order-up-to, base stock, L4L, Kanban, JIT, JIS, MRP-style, DRP-style) assigned by SKU, location, SKU-location, family or node - most specific wins. Every recommendation shows theoretical <b>and</b> practical (MOQ / multiple) quantities.</p></div>
+<div style="display:flex;gap:8px"><a class="btn" href="{{ url_for('replenishment.decision') }}">Decision explainer</a><a class="btn" href="{{ url_for('optimization.home') }}">Optimise (MILP)</a><a class="btn" href="{{ url_for('replenishment.lead_time') }}">Lead-time intelligence</a><a class="btn" href="{{ url_for('replenishment.home', only=0 if only else 1) }}">{{ 'Show all' if only else 'Only orders due' }}</a></div></div>
+{% if empty %}{{ empty_state() }}{% else %}
+<div class="kpis mb">{{ kpi('SKU-locations shown', rows|length|num) }}{{ kpi('Orders triggered now', trig|num, 'policy trigger met') }}{{ kpi('Recommended purchase value', total_cost|money, 'qty × unit cost') }}</div>
+<div class="card mb">{{ table('rep', [{'k':'sku','l':'SKU','t':'link','href':'/replenishment/decision?sku={sku}&loc={node}'},{'k':'node','l':'Node'},{'k':'policy','l':'Policy'},{'k':'position','l':'Position','t':'num'},{'k':'rop','l':'ROP','t':'num'},{'k':'ss','l':'Safety stock','t':'num'},{'k':'eoq','l':'EOQ (theoretical)','t':'num'},{'k':'raw','l':'Policy qty (raw)','t':'num'},{'k':'q','l':'Recommended qty (practical)','t':'num'},{'k':'trig','l':'Trigger'},{'k':'order_date','l':'Order by','t':'date'},{'k':'arrival','l':'Expected arrival','t':'date'},{'k':'post','l':'Post-order position','t':'num'},{'k':'risk_no','l':'Risk if not ordered','t':'pct','d':0},{'k':'risk','l':'Risk now','t':'badge'},{'k':'cost','l':'Cost','t':'money'},{'k':'notes','l':'Rounding / constraints'}], rows, name='replenishment') }}</div>
+<div class="grid g2"><section class="card"><h2>Assigned policies</h2>{% set pr = [] %}{% for p in policies %}{% set _ = pr.append({'level':p.level,'key':p.key,'params':p.params|tojson,'notes':p.notes}) %}{% endfor %}{{ table('rp', [{'k':'level','l':'Level','t':'badge'},{'k':'key','l':'Scope'},{'k':'params','l':'Parameters'},{'k':'notes','l':'Notes'}], pr, group=false, export=false) }}</section>
+<section class="card"><h2>Assign a policy</h2>{% if has_perm('configure') %}<form method="post" action="{{ url_for('replenishment.add_policy') }}" class="form-grid"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><div><label>Scope level</label><select name="level">{% for l in levels %}<option {{ 'selected' if l == 'SKU' }}>{{ l }}</option>{% endfor %}</select></div><div><label>Scope key</label><input type="text" name="key" placeholder="SKU / node / family / SKU|NODE"></div><div style="grid-column:1/-1"><label>Parameters (JSON)</label><input type="text" name="params" value='{"policy":"MIN_MAX","min":100,"max":400}' style="width:100%"></div><div><button class="btn primary">Save policy</button></div></form>{% else %}<p class="muted">Requires the configure permission.</p>{% endif %}
+<details class="mt"><summary class="small">Policy catalogue</summary>{% for k, v in catalog.items() %}<div class="small"><b>{{ k }}</b> - {{ v.name }}: {{ v.rule }}</div>{% endfor %}</details></section></div>
+{% endif %}{% endblock %}

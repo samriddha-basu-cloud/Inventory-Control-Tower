@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, empty_state %}
+{% block title %}Inventory Explorer{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Inventory Explorer</h1><p>Every item at every node, with the concepts kept apart: <b>Physical</b> {{ tip(tips.on_hand) }} · <b>Available</b> {{ tip(tips.available) }} · <b>Position</b> {{ tip(tips.position) }} · <b>Projected</b> {{ tip(tips.projected) }}. Click a row for SKU 360.</p></div>
+<div style="display:flex;gap:8px"><a class="btn" href="{{ url_for('inventory.abc_xyz') }}">ABC-XYZ</a><a class="btn" href="{{ url_for('inventory.aging') }}">Aging</a><a class="btn" href="{{ url_for('inventory.expiry') }}">Expiry</a><a class="btn" href="{{ url_for('inventory.ledger') }}">Ledger</a><a class="btn" href="{{ url_for('inventory.trace') }}">Traceability</a><a class="btn" href="{{ url_for('inventory.reconciliation') }}">Reconciliation</a><a class="btn" href="{{ url_for('inventory.health') }}">Health</a></div></div>
+{% if empty %}{{ empty_state() }}{% else %}
+<div class="kpis mb">{{ kpi('SKU-locations', rows|length|num) }}{{ kpi('On-hand value', totals.on_hand_value|money) }}{{ kpi('Available value', totals.available_value|money, '', None, tips.available) }}{{ kpi('In-transit', totals.in_transit_value|money) }}{{ kpi('On-order', totals.on_order_value|money) }}{{ kpi('HIGH/CRITICAL risk', totals.at_risk_pairs|int|string) }}</div>
+<div class="card">
+{{ table('explorer', [
+ {'k':'sku','l':'SKU','t':'link','href':'/inventory/sku/{sku}','drawer':'/inventory/sku/{sku}/drawer'},{'k':'desc','l':'Description'},{'k':'node','l':'Node','t':'link','href':'/inventory/location/{node}'},
+ {'k':'on_hand','l':'On hand','t':'num','tip':'Physical stock in all counted states'},{'k':'available','l':'Available','t':'num','tip':'Usable − allocated − committed − reserved'},{'k':'allocated','l':'Allocated','t':'num'},
+ {'k':'in_transit','l':'In transit','t':'num'},{'k':'on_order','l':'On order','t':'num'},{'k':'position','l':'Inv. position','t':'num','tip':'Available + in-transit + on-order − backorders'},
+ {'k':'ss','l':'Safety stock','t':'num'},{'k':'days_supply','l':'Days supply','t':'num','d':1},{'k':'demand','l':'Demand/day','t':'num','d':1},{'k':'risk','l':'Risk','t':'badge'},
+ {'k':'value','l':'Value','t':'money'},{'k':'abc','l':'ABC'},{'k':'xyz','l':'XYZ'},{'k':'age','l':'Age (d)','t':'num'},{'k':'expiry','l':'Expiry (d)','t':'num'},{'k':'cls','l':'Class','t':'badge'},{'k':'industry','l':'Industry'}],
+ rows, name='inventory-explorer', row_href='/inventory/sku/{sku}?loc={node}') }}
+</div>
+{% endif %}
+{% endblock %}

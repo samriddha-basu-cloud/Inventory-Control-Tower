@@ -1,0 +1,5 @@
+{% extends 'base.html' %}
+{% block title %}{{ code }}{% endblock %}
+{% block content %}
+<div class="card empty" style="max-width:640px;margin:50px auto"><h1>{{ code }}</h1><h2>{{ {400:'Request could not be processed',401:'Sign-in required',403:'Not permitted',404:'Page not found',413:'File too large',429:'Too many requests',500:'Something went wrong'}.get(code, 'Error') }}</h2><p>{{ message }}</p><p><a class="btn primary" href="{{ url_for('main.home') }}">Back to Control Tower</a></p></div>
+{% endblock %}

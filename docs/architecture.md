@@ -1,66 +1,54 @@
 # Architecture
 
-## Layers
-
 ```
-routes/        HTTP layer (Flask blueprints). Thin - parses request, calls a
-                service, renders a template or returns JSON.
-services/       Orchestration layer. Reads/writes the database, calls
-                optimization/analytics modules, persists results
-                (OptimizationRun, Recommendation, Alert, Incident, Scenario).
-optimization/   Pure functions. No database access. Every function returns a
-analytics/      dict that includes the formula, inputs and assumptions used,
-                so the UI's "Calculation Explorer" pattern can show its work.
-models/         SQLAlchemy ORM - the canonical data model (see data-model.md).
-```
-
-This separation means every optimization/analytics function is independently
-unit-testable without a database (see `tests/test_safety_stock.py`,
-`tests/test_eoq.py`, etc.), while services are tested against a real
-in-memory SQLite database via `tests/test_inventory_service.py` and the
-full-stack integration suite in `tests/test_integration_demo.py`.
-
-## Request flow example: replenishment
-
-```
-GET /replenishment
-  -> routes/replenishment.py: home()
-     -> services/replenishment_service.generate_replenishment_recommendations(persist=False)
-        -> for each ReplenishmentPolicy:
-             services/demand_stats.daily_demand_stats()      (reads DemandHistory)
-             services/inventory_service.inventory_position()  (reads InventoryLedger)
-             optimization/reorder_point.reorder_point()       (pure calc)
-             optimization/eoq.eoq() + apply_lot_size_constraints()  (pure calc)
-             optimization/replenishment.rop_eoq_recommendation()    (pure calc)
-     -> templates/replenishment/home.html
+Browser (Jinja2 + vanilla JS + Plotly)         REST clients (FIT, ERP push)  ── X-API-Key
+              │                                        │
+       app/routes  (18 blueprints, RBAC, CSRF)   app/routes/api.py
+              │
+       app/services ──────────────────────────────────────────────────────────────┐
+   snapshot.py  DB rows → PairInputs (plain dataclasses, cached per data-version) │
+   engine.py    PairInputs → PairResult   (pure functions: demand, lead time, SS, │
+                ROP/EOQ, position, projection, risk, excess, confidence)          │
+   alert / incident / risk / kpi / health / reconciliation / financial / carbon   │
+   allocation / optimization / simulation / action / event / ingestion / report   │
+              │                         │                                         │
+       app/optimization (SciPy HiGHS)   app/rules (rule engine, policies, thresholds)
+              │                                                                   │
+       app/connectors  (mock ERP/WMS/TMS, EDI 846/856/214, MockExecutionConnector, notifiers)
+              │
+       app/models (SQLAlchemy 2)  ── SQLite locally / PostgreSQL in production ── Alembic migrations
 ```
 
-## Why no Celery/Redis/Kafka for the MVP
+**Design rules**
 
-Section 159/198 of the brief explicitly asks for an architecture that
-*allows* background jobs and event streaming later without *requiring* them
-to run locally. Every "run" (optimization, alert generation, scenario) is
-a synchronous request against a small, demo-scale dataset (dozens of SKUs x
-single-digit locations) and completes in well under a second. The
-`OptimizationRun`, `Alert`, `Incident`, `Recommendation` and `Scenario`
-tables already look exactly like what a background worker would write to,
-so introducing Celery/RQ later is additive, not a rewrite: a worker would
-call the same `app/services/*` functions from a task queue and write to
-the same tables.
+1. *Engines are pure.* `engine.compute_pair`, `projection_service`, `safety_stock_service`, … take dataclasses and return dataclasses; they never touch the
+   database or Flask. That is what makes the digital twin safe (it deep-copies `PairInputs`) and the maths unit-testable.
+2. *One snapshot.* All dashboards, APIs, alerts, scenarios and reports read the same cached snapshot, so numbers agree across pages. The cache is keyed by a
+   data-version counter stored in the DB (`system.data_version`), bumped on every write in any worker.
+3. *Configuration is data.* Rules (`Rule`), KPIs (`KpiDefinition`), policies, autonomy rules, roles, inventory states and settings are rows. Rules are JSON
+   conditions evaluated by a safe interpreter; KPI formulas by an AST whitelist evaluator.
+4. *History is append-only.* The inventory ledger stores before/after on-hand per transaction; corrections are reversals. The audit log records data loads,
+   calculation traces, configuration changes, actions, approvals and executions.
+5. *Humans stay in the loop.* Detect → analyse → options → **simulate** → **policy check** → autonomy/approval → execute (mock) → verify → audit. Execution mode
+   defaults to `SIMULATION_ONLY`; `LIVE` is refused without a real connector.
+6. *Event-ready.* `event_service` validates 14 canonical events, is idempotent on `event_id` and dispatches synchronously through `EventPublisher` – swap in a
+   Kafka/Event Hub publisher without touching handlers.
+7. *Background-ready.* `jobs.submit` runs heavy work inline by default (`JOBS_SYNC=1`) or on a thread pool (`JOBS_SYNC=0`); replace with Celery/RQ behind the same interface.
 
-## Event abstraction (section 114)
+## Module map (spec A–AD)
 
-There is no message bus in this build. The nearest equivalent is the
-`InventoryTransaction` append-only log table and the `AuditLog` table, which
-record what happened and when. A real event bus (Kafka/EventBridge/Pub-Sub)
-would publish the same shape of event; the model is deliberately named to
-make that swap straightforward later (see `known-limitations.md`).
-
-## Connector architecture (sections 83, 199)
-
-`ERPConnector` / `WMSConnector` / `TMSConnector` interfaces are **not**
-implemented as code in this build - there is nothing to connect to. Instead,
-every place an external system would normally be called (PO/TO execution)
-runs in **simulation mode** and says so explicitly in the UI and API
-response (`"no live ERP/WMS/TMS connector configured"`), per the brief's
-explicit instruction not to fake live integrations.
+| Spec module | Where |
+|---|---|
+| Control tower, filters, search, drill-down | `routes/main.py`, `templates/control`, `services/network_service.py`, `services/search_service.py` |
+| Data hub / ingestion / EDI / events | `routes/datahub.py`, `services/ingestion_service.py`, `connectors/edi.py`, `services/event_service.py` |
+| Master data, UOM, quality | `routes/master.py`, `utils/uom.py`, `services/master_data_service.py` |
+| Ledger, reconciliation, traceability, aging, expiry | `services/ledger_service.py`, `reconciliation_service.py`, `traceability_service.py`, `expiry_service.py` |
+| Replenishment, safety stock, lead time | `services/replenishment_service.py`, `safety_stock_service.py`, `lead_time_service.py` |
+| Optimization, rebalancing | `optimization/*`, `services/optimization_service.py` |
+| Pegging, allocation | `services/allocation_service.py`, `optimization/allocation.py` |
+| Risk, alerts, root cause | `services/risk_service.py`, `alert_service.py`, `incident_service.py` |
+| Digital twin, scenarios, S&OP, experiments | `services/simulation_service.py`, `sop_service.py`, `experiment_service.py` |
+| Financial, carbon, circular | `services/financial_service.py`, `carbon_service.py`, `routes/finance.py` |
+| Industry modes | `services/industry_service.py`, `services/seed_service.py` (profiles) |
+| Actions, autonomy, approvals, connectors | `services/action_service.py`, `connectors/execution.py` |
+| Governance, audit, reports | `routes/governance.py`, `services/audit_service.py`, `services/report_service.py` |

@@ -1,26 +1,8 @@
-{% extends "base.html" %}
-{% block title %}Incidents{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}Root Cause{% endblock %}
 {% block content %}
-<div class="ict-section-title">Incident Management</div>
-<div class="ict-section-sub">Related alerts are clustered into a single incident with one root-cause narrative, instead of dozens of independent SKU alerts.</div>
-
-<div class="ict-card">
-<table class="table table-ict mb-0">
-  <thead><tr><th>Title</th><th>Root Cause (Observed)</th><th>Affected</th><th>Financial Impact</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-    {% for inc in incidents %}
-    <tr>
-      <td>{{ inc.title }}</td>
-      <td class="small">{{ inc.root_cause_observed }}</td>
-      <td>{{ inc.affected_sku_count }} SKUs / {{ inc.affected_location_count }} nodes</td>
-      <td>{{ inc.financial_impact | money }}</td>
-      <td>{{ inc.status }}</td>
-      <td><a href="{{ url_for('alerts.incident_detail', incident_id=inc.id) }}" class="btn btn-sm btn-outline-primary">Open</a></td>
-    </tr>
-    {% else %}
-    <tr><td colspan="6" class="text-muted">No incidents.</td></tr>
-    {% endfor %}
-  </tbody>
-</table>
-</div>
+<div class="page-head"><div><h1>Root-cause incidents</h1><p>Symptoms are clustered by <b>shared causal dimensions</b> - shipment, purchase order, port, transport lane, supplier, production order and time - never by text similarity. Forty stock-out alerts can become one incident such as “Port delay affecting shipment X”.</p></div></div>
+<div class="kpis mb">{{ kpi('Open incidents', rows|length) }}{{ kpi('Alerts absorbed by incidents', clustered, 'of ' ~ open_alerts ~ ' open alerts') }}{{ kpi('Revenue at risk (incidents)', (rows|sum(attribute='rev'))|money) }}{{ kpi('Production at risk', (rows|sum(attribute='prod'))|money) }}</div>
+<div class="card">{{ table('inc', [{'k':'no','l':'Incident','t':'link','href':'/root-cause/{id}'},{'k':'title','l':'Title'},{'k':'sev','l':'Severity','t':'badge'},{'k':'status','l':'Status','t':'badge'},{'k':'cause','l':'Cause type'},{'k':'pri','l':'Priority','t':'num','d':0},{'k':'alerts','l':'Alerts','t':'num'},{'k':'skus','l':'SKUs','t':'num'},{'k':'nodes','l':'Nodes','t':'num'},{'k':'rev','l':'Revenue at risk','t':'money'},{'k':'prod','l':'Production at risk','t':'money'},{'k':'svc','l':'Service impact','t':'pct'},{'k':'inv','l':'Inventory impact','t':'money'},{'k':'owner','l':'Owner'},{'k':'root','l':'Root cause'}], rows, name='incidents', row_href='/root-cause/{id}', empty='No open incidents - run detection or load demo data.') }}</div>
 {% endblock %}

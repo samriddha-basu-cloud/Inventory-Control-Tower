@@ -1,25 +1,10 @@
-{% extends "base.html" %}
-{% block title %}ABC × XYZ Matrix{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}ABC-XYZ{% endblock %}
 {% block content %}
-<div class="ict-section-title">ABC × XYZ Segmentation Matrix</div>
-<div class="ict-section-sub">Total network annual consumption value: {{ total_value | money }}. Policy recommendations are configurable defaults, not fixed rules.</div>
-
-<div class="row row-cols-3 g-3">
-  {% for abc in ['A','B','C'] %}
-    {% for xyz in ['X','Y','Z'] %}
-      {% set seg = abc ~ xyz %}
-      {% set cell = matrix.get(seg, {'sku_count':0,'value':0,'policy':''}) %}
-      <div class="col">
-        <div class="ict-card matrix-cell seg-{{ abc }}">
-          <div class="d-flex justify-content-between">
-            <div class="fw-bold">{{ seg }}</div>
-            <span class="chip chip-{{ xyz|lower }}">{{ xyz }}</span>
-          </div>
-          <div class="text-muted small mb-1">{{ cell.sku_count }} SKUs · {{ cell.value | money }}</div>
-          <div class="small">{{ cell.policy }}</div>
-        </div>
-      </div>
-    {% endfor %}
-  {% endfor %}
-</div>
+<div class="page-head"><div><h1>ABC-XYZ &amp; segmentation</h1><p>ABC on <b>Annual Consumption Value = annual demand × unit cost</b> (cut-offs {{ (th.abc.A*100)|round(0)|int }}% / {{ (th.abc.B*100)|round(0)|int }}% cumulative); XYZ on demand <b>coefficient of variation CV = σ / μ</b> (X ≤ {{ th.xyz.X }}, Y ≤ {{ th.xyz.Y }}). All thresholds are configurable in Settings.</p></div>
+<form method="get" class="form-grid" data-autosubmit style="min-width:340px"><div><label>Combine schemes</label><select name="combine">{% for v in ['abc,xyz','abc,xyz,fsn','abc,fsn','abc,hml,ved','xyz,fsn','abc,xyz,criticality','ved,sde','hml,fsn'] %}<option value="{{ v }}" {{ 'selected' if v == combine|join(',') }}>{{ v|upper|replace(',',' + ') }}</option>{% endfor %}</select></div></form></div>
+<div class="grid g2 mb"><section class="card"><h2>ABC × XYZ matrix</h2>{{ plot(hm, 'abcxyz-hm', 250) }}</section><section class="card"><h2>Pareto of annual consumption value</h2>{{ plot(par, 'pareto', 300) }}</section></div>
+<div class="card mb"><h2>Combined segments ({{ combine|join(' + ')|upper }})</h2><div class="flow">{% for k, n in combos %}<span class="node"><b>{{ k }}</b> · {{ n }} SKUs</span>{% endfor %}</div><p class="small muted">FSN = fast/slow/non-moving (turns ≥ {{ th.fsn.fast_turns }} = fast; no demand for {{ th.fsn.non_moving_days }} d = non-moving). HML = value tiers by unit value. VED/SDE and criticality come from master data.</p></div>
+<div class="card">{{ table('abc', [{'k':'sku','l':'SKU','t':'link','href':'/inventory/sku/{sku}'},{'k':'desc','l':'Description'},{'k':'annual','l':'Annual demand','t':'num'},{'k':'cost','l':'Unit cost','t':'money'},{'k':'acv','l':'Annual consumption value','t':'money'},{'k':'cum','l':'Cumulative %','t':'pct'},{'k':'abc','l':'ABC','t':'badge'},{'k':'cv','l':'CV','t':'num','d':2},{'k':'xyz','l':'XYZ'},{'k':'fsn','l':'FSN'},{'k':'hml','l':'HML'},{'k':'ved','l':'VED'},{'k':'sde','l':'SDE'},{'k':'crit','l':'Criticality'},{'k':'combo','l':'Segment'},{'k':'turns','l':'Turns','t':'num','d':1}], rows, name='abc-xyz') }}</div>
 {% endblock %}

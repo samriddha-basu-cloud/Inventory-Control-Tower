@@ -2,7 +2,8 @@ __pycache__/
 *.pyc
 *.pyo
 .env
-instance/
+instance/*
+!instance/.gitkeep
 *.db
 *.sqlite
 *.sqlite3
@@ -13,9 +14,11 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
-uploads/
+data/uploads/*
+!data/uploads/.gitkeep
 *.log
 .DS_Store
+Icon?
 node_modules/
 dist/
 build/

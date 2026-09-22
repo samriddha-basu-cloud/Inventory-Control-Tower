@@ -1,0 +1,7 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}{{ t.title }}{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>{{ t.title }}</h1>{% for n in t.notes %}<p class="small">{{ n }}</p>{% endfor %}</div><div style="display:flex;gap:6px"><a class="btn" href="{{ url_for('reports.home') }}">← Reports</a>{% if has_perm('export') %}<a class="btn" href="{{ url_for('reports.download', slug=slug, fmt='csv', **args) }}">CSV</a><a class="btn" href="{{ url_for('reports.download', slug=slug, fmt='xlsx', **args) }}">XLSX</a><a class="btn" href="{{ url_for('reports.download', slug=slug, fmt='pdf', **args) }}">PDF</a>{% endif %}</div></div>
+<div class="card">{{ table('rep', cols, rows, name=slug) }}{% if truncated %}<p class="small muted">Showing the first 800 rows - export for everything.</p>{% endif %}</div>
+{% endblock %}

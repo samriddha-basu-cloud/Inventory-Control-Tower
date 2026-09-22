@@ -3,83 +3,64 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>{% block title %}{{ app_short }}{% endblock %} · {{ app_name }}</title>
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
-  {% block extra_head %}{% endblock %}
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <title>{% block title %}Control Tower{% endblock %} · Inventory Control Tower</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+  <script defer src="{{ url_for('main.plotly_js') }}"></script>
+  <script defer src="{{ url_for('static', filename='js/app.js') }}"></script>
 </head>
 <body>
-<div class="ict-shell">
-  <nav class="ict-sidebar">
-    <div class="brand">
-      <div class="name">🗼 {{ app_name }}</div>
-      <div class="tag">{{ tagline }}</div>
-    </div>
-    <div class="ict-nav">
-      <a href="{{ url_for('dashboard.control_tower') }}" class="{{ 'active' if request.endpoint == 'dashboard.control_tower' }}">Control Tower</a>
-
-      <div class="section-label">Inventory</div>
-      <a href="{{ url_for('inventory.item_list') }}" class="{{ 'active' if request.endpoint == 'inventory.item_list' }}">Inventory Explorer</a>
-      <a href="{{ url_for('inventory.abc_xyz_matrix') }}" class="{{ 'active' if request.endpoint == 'inventory.abc_xyz_matrix' }}">ABC × XYZ Matrix</a>
-      <a href="{{ url_for('inventory.aging_view') }}" class="{{ 'active' if request.endpoint == 'inventory.aging_view' }}">Aging &amp; Expiry</a>
-
-      <div class="section-label">Network</div>
-      <a href="{{ url_for('network.network_map') }}" class="{{ 'active' if request.endpoint == 'network.network_map' }}">Network Map</a>
-      <a href="{{ url_for('network.heatmap') }}" class="{{ 'active' if request.endpoint == 'network.heatmap' }}">Inventory Heatmap</a>
-
-      <div class="section-label">Plan &amp; Optimize</div>
-      <a href="{{ url_for('replenishment.home') }}" class="{{ 'active' if request.endpoint == 'replenishment.home' }}">Replenishment</a>
-      <a href="{{ url_for('optimization.home') }}" class="{{ 'active' if request.endpoint == 'optimization.home' }}">Optimization</a>
-      <a href="{{ url_for('optimization.meio') }}" class="{{ 'active' if request.endpoint == 'optimization.meio' }}">MEIO</a>
-      <a href="{{ url_for('optimization.rebalancing') }}" class="{{ 'active' if request.endpoint == 'optimization.rebalancing' }}">Rebalancing</a>
-      <a href="{{ url_for('allocation.home') }}" class="{{ 'active' if request.endpoint == 'allocation.home' }}">Allocation</a>
-      <a href="{{ url_for('scenarios.list_scenarios') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('scenarios.') }}">Scenarios / Digital Twin</a>
-
-      <div class="section-label">Exceptions</div>
-      <a href="{{ url_for('alerts.workbench') }}" class="{{ 'active' if request.endpoint == 'alerts.workbench' }}">Exception Workbench</a>
-      <a href="{{ url_for('alerts.incidents') }}" class="{{ 'active' if request.endpoint and 'incident' in request.endpoint }}">Incidents</a>
-      <a href="{{ url_for('alerts.recommendations') }}" class="{{ 'active' if request.endpoint == 'alerts.recommendations' }}">Recommendations &amp; Approvals</a>
-
-      <div class="section-label">Data &amp; Reports</div>
-      <a href="{{ url_for('master_data.home') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('master_data.') }}">Master Data</a>
-      <a href="{{ url_for('reports.home') }}" class="{{ 'active' if request.endpoint and request.endpoint.startswith('reports.') }}">Report Center</a>
-    </div>
-  </nav>
-
-  <div class="ict-main">
-    <div class="ict-topbar">
-      <form class="position-relative" style="width:360px" onsubmit="return false;">
-        <input id="ict-search-input" type="text" class="form-control form-control-sm" placeholder="Search SKU, supplier, PO… (Ctrl+K)">
-        <div id="ict-search-results" class="list-group position-absolute w-100 shadow-sm d-none" style="z-index:20; max-height:320px; overflow:auto;"></div>
-      </form>
-      <div class="ms-auto d-flex align-items-center gap-2">
-        <form method="post" action="{{ url_for('main.launch_demo') }}">
-          <button class="btn btn-sm btn-primary">Launch Demo</button>
-        </form>
-        <span class="text-muted small">planner@demo.org</span>
+{% from '_macros.html' import badge, tip %}
+<div class="app">
+  <aside class="sidebar" id="sidebar" aria-label="Primary navigation">
+    <a class="brand" href="{{ url_for('main.home') }}" style="text-decoration:none"><div class="logo">ICT</div><div><b>Inventory Control Tower</b><span>From visibility to autonomous decisions</span></div></a>
+    <nav class="nav">
+      {% for g in NAV %}
+        <div class="nav-group">{{ g.group }}</div>
+        {% for label, ep, icon in g['items'] %}
+          <a href="{{ url_for(ep) }}" class="{{ 'active' if ep == active_ep }}" {{ 'aria-current=page' if ep == active_ep }}><span class="ic" aria-hidden="true">{{ icon }}</span>{{ label }}{% if label == 'Alerts' and nav_alerts %} <span class="chip" style="margin-left:auto;padding:0 7px">{{ nav_alerts }}</span>{% endif %}{% if label == 'Action Center' and nav_actions %} <span class="chip" style="margin-left:auto;padding:0 7px">{{ nav_actions }}</span>{% endif %}</a>
+        {% endfor %}
+      {% endfor %}
+    </nav>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <button class="btn sm hamburger" id="hamburger" aria-label="Toggle navigation">☰</button>
+      <div class="search"><input id="global-search" type="search" placeholder="Search SKU, PO, SO, shipment, supplier, location, batch, incident…  ( / )" aria-label="Global search" autocomplete="off"><div class="search-results" id="search-results" role="listbox"></div></div>
+      <div class="top-actions">
+        <span class="chip" title="Active industry profile: terminology, KPIs, rules and policy overrides">⚙ {{ industry_name }}</span>
+        {% if freshness_score is not none %}<span class="chip" title="{{ freshness_note }}">{{ badge('NORMAL' if freshness_score >= 0.9 else ('WATCH' if freshness_score >= 0.6 else 'ATTENTION'), 'Data ' ~ (freshness_score * 100)|round(0)|int ~ '%') }}</span>{% endif %}
+        {% if user %}
+        <form method="post" action="{{ url_for('main.switch_role') }}" style="display:flex;gap:4px;align-items:center">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          {% if auth_required %}<span class="chip">👤 {{ user.name }} · {{ user.role }}</span> <a class="btn sm" href="{{ url_for('main.logout') }}">Sign out</a>
+          {% else %}<select name="role" aria-label="Acting role (demo)" onchange="this.form.submit()" title="Demo mode: switch persona to see role-based permissions">{% for r in roles %}<option {{ 'selected' if r == user.role }}>{{ r }}</option>{% endfor %}</select>{% endif %}
+        </form>{% endif %}
+        <button class="btn sm" id="theme-toggle" aria-label="Toggle light/dark theme">◐</button>
       </div>
-    </div>
-
-    <div class="ict-content">
-      {% with messages = get_flashed_messages(with_categories=true) %}
-        {% if messages %}
-          {% for category, message in messages %}
-            <div class="alert alert-{{ 'danger' if category == 'danger' else category }} alert-dismissible fade show py-2" role="alert">
-              {{ message }}
-              <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-          {% endfor %}
-        {% endif %}
-      {% endwith %}
-
+    </header>
+    <details class="filterbar" {{ 'open' if gfilter.active() }}>
+      <summary>▤ Global filters {% if gfilter.active() %}<span class="chip">{{ gfilter.active()|length }} active: {% for k, v in gfilter.active().items() %}{{ k|replace('_',' ') }}={{ v }}{{ ', ' if not loop.last }}{% endfor %}</span>{% else %}<span class="muted">Date · Region · BU · Industry · SKU · Family · Location · Supplier · Customer · Warehouse (persist across pages)</span>{% endif %}</summary>
+      <form method="post" action="{{ url_for('main.set_filters') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="next" value="{{ request.full_path if request.query_string else request.path }}">
+        <div><label>Date from</label><input type="date" name="date_from" value="{{ gfilter.date_from }}"></div>
+        <div><label>Date to</label><input type="date" name="date_to" value="{{ gfilter.date_to }}"></div>
+        {% for key, label in [('region','Region'),('business_unit','Business unit'),('industry','Industry'),('family','Product family'),('location','Location'),('warehouse','Warehouse'),('supplier','Supplier'),('customer','Customer')] %}
+        <div><label>{{ label }}</label><select name="{{ key }}"><option value="">All</option>{% for o in facets.get(key, []) %}<option value="{{ o }}" {{ 'selected' if gfilter[key] == o }}>{{ o }}</option>{% endfor %}</select></div>
+        {% endfor %}
+        <div><label>SKU contains</label><input type="text" name="sku" value="{{ gfilter.sku }}" list="sku-list" placeholder="e.g. BRK"><datalist id="sku-list">{% for o in facets.get('sku', [])[:300] %}<option value="{{ o }}">{% endfor %}</datalist></div>
+        <div style="display:flex;gap:6px"><button class="btn primary sm">Apply</button><button class="btn sm" name="reset" value="1">Reset</button></div>
+      </form>
+    </details>
+    <main class="content" id="content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}{% for cat, m in msgs %}<div class="flash {{ cat }}" role="status">{{ m }}</div>{% endfor %}{% endwith %}
+      {% if exec_mode != 'LIVE' %}<div class="banner info" role="note"><span class="badge MOCK">◇ {{ exec_mode.replace('_',' ') }}</span> ICT is in <b>{{ exec_mode.replace('_',' ').lower() }}</b> mode: recommendations are explainable and approvals are tracked, but <b>no transaction is posted to any ERP/WMS/TMS</b> (execution uses the mock connector).</div>{% endif %}
       {% block content %}{% endblock %}
-    </div>
+    </main>
+    <footer class="foot">Inventory Control Tower · as-of {{ as_of }} · data version {{ data_ver }} · Demo data is synthetic; emissions are estimates from configured factors; the Health Index is an ICT-defined composite, not an industry standard.</footer>
   </div>
 </div>
-
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2.33.0/plotly.min.js"></script>
-<script src="{{ url_for('static', filename='js/app.js') }}"></script>
-{% block extra_scripts %}{% endblock %}
+<div class="scrim" id="scrim"></div><aside class="drawer" id="drawer" aria-label="Details panel"></aside>
+<dialog id="confirm-dialog"><p id="confirm-msg" style="margin-top:0"></p><div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" id="confirm-no" type="button">Cancel</button><button class="btn primary" id="confirm-yes" type="button">Confirm</button></div></dialog>
 </body>
 </html>

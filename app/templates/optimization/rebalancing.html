@@ -1,34 +1,14 @@
-{% extends "base.html" %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, empty_state %}
 {% block title %}Rebalancing{% endblock %}
 {% block content %}
-<div class="ict-section-title">Network Rebalancing Engine</div>
-<div class="ict-section-sub">Matches surplus nodes to deficit nodes for the same SKU against a target days-of-supply.</div>
-
-<form method="post" class="ict-card mb-4 d-flex gap-2 align-items-end">
-  <div>
-    <label class="form-label small">Target days of supply</label>
-    <input type="number" name="target_dos_days" value="14" class="form-control form-control-sm" style="width:120px">
-  </div>
-  <button class="btn btn-sm btn-primary">Find Transfer Opportunities</button>
-</form>
-
-{% if result %}
-<div class="ict-card">
-  <table class="table table-ict mb-0">
-    <thead><tr><th>SKU</th><th>Source</th><th>Destination</th><th>Quantity</th><th>Transit</th><th>Cost</th><th>Why</th></tr></thead>
-    <tbody>
-      {% for t in result %}
-      <tr>
-        <td>{{ t.item }}</td><td>{{ t.source }}</td><td>{{ t.destination }}</td>
-        <td>{{ t.quantity | num }}</td><td>{{ t.transit_days }} days</td><td>{{ t.transport_cost | money }}</td>
-        <td class="small text-muted">{{ t.reason }}</td>
-      </tr>
-      {% else %}
-      <tr><td colspan="7" class="text-muted">No transfer opportunities found at this target.</td></tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</div>
-<p class="text-muted small mt-2">Recommendations were also written to the Recommendations queue for approval.</p>
-{% endif %}
-{% endblock %}
+<div class="page-head"><div><h1>Inventory rebalancing</h1><p>Excess at one node, shortage at another: a transportation LP recommends transfers evaluating distance, freight cost, ETA vs stock-out date, donor safety stock, temperature capability, transfer policy and carbon (priced). Blocked lanes state the reason.</p></div><a class="btn" href="{{ url_for('optimization.rebalancing', full=0 if require_full else 1) }}">{{ 'Allow partial' if require_full else 'Require full coverage (shows infeasibility)' }}</a></div>
+{% if empty %}{{ empty_state() }}{% else %}
+<div class="kpis mb">{{ kpi('Proposed transfers', plan.transfers|length) }}{{ kpi('Items analysed', plan['items']) }}{{ kpi('Freight cost', plan.total_cost|money, 'incl. priced carbon') }}{{ kpi('Unmet after transfers', plan.unmet|length, 'nodes still short', 'ATTENTION' if plan.unmet else 'NORMAL') }}{{ kpi('Solver status', plan.status, '', 'NORMAL' if plan.status == 'OPTIMAL' else 'CRITICAL') }}</div>
+{% for e in plan.explanation %}<div class="banner {{ 'crit' if plan.status != 'OPTIMAL' else 'warn' }}">{{ e }}</div>{% endfor %}
+<section class="card mb"><h2>Current state → proposed transfer → after-transfer state</h2>
+<div class="tbl"><div class="tbl-wrap"><table class="dt" id="rb"><thead><tr><th>SKU</th><th>From → To</th><th class="num">Qty</th><th class="num">ETA (d)</th><th class="num">Freight</th><th class="num">CO2e (est.)</th><th>Donor position<br>before → after</th><th>Receiver position<br>before → after</th><th>Receiver stock-out P<br>before → after</th><th>Receiver risk</th><th></th></tr></thead><tbody>
+{% for t in plan.transfers %}<tr><td><a href="{{ url_for('inventory.sku360', sku=t.sku) }}">{{ t.sku }}</a></td><td>{{ t.from }} → <b>{{ t.to }}</b></td><td class="num">{{ t.qty|num }}</td><td class="num">{{ t.eta_days|num(1) }}</td><td class="num">{{ t.freight_cost|money }}</td><td class="num">{{ t.co2e_kg|num }} kg</td><td class="num">{{ t.before.from_position|num }} → {{ t.after.from_position|num }}</td><td class="num">{{ t.before.to_position|num }} → {{ t.after.to_position|num }}</td><td class="num">{{ t.before.to_prob|pct(0) }} → <b>{{ t.after.to_prob|pct(0) }}</b></td><td>{{ badge(t.before.to_risk) }} → {{ badge(t.after.to_risk) }}</td><td>{% if has_perm('create_action') %}<form method="post" action="{{ url_for('optimization.rebalancing_act') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><input type="hidden" name="idx" value="{{ loop.index0 }}"><button class="btn sm primary">Create action</button></form>{% endif %}</td></tr>{% else %}<tr><td colspan="11" class="muted" style="padding:20px">No beneficial transfers found under the current constraints.</td></tr>{% endfor %}</tbody></table></div></div></section>
+<div class="grid g2"><section class="card"><h2>Still short after transfers</h2>{{ table('um', [{'k':'sku','l':'SKU'},{'k':'node','l':'Node'},{'k':'unmet','l':'Unmet need','t':'num'}], plan.unmet, group=false, export=false, empty='All shortages covered.') }}</section>
+<section class="card"><h2>Blocked lanes (and why)</h2>{{ table('bl', [{'k':'sku','l':'SKU'},{'k':'donor','l':'From'},{'k':'receiver','l':'To'},{'k':'reason','l':'Reason'}], plan.blocked[:150], group=false, export=false, empty='No blocked lanes.') }}<p class="small muted">Constraints: {{ plan.constraints }} · weights {{ plan.objective_weights }}</p></section></div>
+{% endif %}{% endblock %}

@@ -1,15 +1,7 @@
-{% extends "base.html" %}
-{% block title %}Report Center{% endblock %}
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}Reports{% endblock %}
 {% block content %}
-<div class="ict-section-title">Report Center</div>
-<div class="ict-section-sub">Export a multi-sheet workbook covering the executive summary through raw transactions and methodology reference.</div>
-
-<div class="ict-card" style="max-width:520px;">
-  <div class="fw-bold">Full Excel Export</div>
-  <p class="small text-muted">README, Executive Summary, Inventory Position, Aging, ABC/XYZ, Safety Stock, Stockout Risk,
-    Excess, Supplier, Alerts, Methodology.</p>
-  <a href="{{ url_for('reports.excel_export') }}" class="btn btn-sm btn-primary">Download .xlsx</a>
-</div>
-
-<p class="text-muted small mt-4">PDF report generation is not yet implemented in this build (see docs/known-limitations.md).</p>
+<div class="page-head"><div><h1>Report center</h1><p>Eleven reports plus a professional 18-sheet workbook (README · MASTER_DATA · INVENTORY · TRANSACTIONS · DEMAND · FORECAST · SAFETY_STOCK · REPLENISHMENT · ABC_XYZ · AGING · EXPIRY · SUPPLY · PEGGING · ALERTS · SCENARIOS · FINANCIAL · CARBON · AUDIT). Reports respect the global filters. Exports: CSV · XLSX · PDF.</p></div>{% if has_perm('export') %}<a class="btn primary" href="{{ url_for('reports.full') }}">⇩ Full workbook (XLSX)</a>{% endif %}</div>
+<div class="grid g3">{% for slug, title in reports %}<section class="card"><h2>{{ title }}</h2><div style="display:flex;gap:6px;margin-top:10px;flex-wrap:wrap"><a class="btn sm" href="{{ url_for('reports.view', slug=slug) }}">Preview</a>{% if has_perm('export') %}<a class="btn sm" href="{{ url_for('reports.download', slug=slug, fmt='csv') }}">CSV</a><a class="btn sm" href="{{ url_for('reports.download', slug=slug, fmt='xlsx') }}">XLSX</a><a class="btn sm" href="{{ url_for('reports.download', slug=slug, fmt='pdf') }}">PDF</a>{% endif %}</div></section>{% endfor %}</div>
 {% endblock %}

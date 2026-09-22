@@ -1,0 +1,14 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}Expiry & FEFO{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Expiry, shelf life &amp; FEFO</h1><p>Days to expiry and % shelf life remaining per lot; status <b>Near</b> ≤ {{ th.near_days }} d, <b>Critical</b> ≤ {{ th.critical_days }} d, <b>Expired</b> &lt; 0. FEFO = first-expiry-first-out; only released, unexpired, unrestricted stock is pickable.</p></div></div>
+<div class="grid g2 mb">
+<section class="card"><h2>Expiry exposure by status (value)</h2>{{ plot(fig, 'exp', 260) }}</section>
+<section class="card"><h2>FEFO pick simulator</h2>
+<form method="get" class="form-grid"><div><label>SKU</label><input type="text" name="sku" value="{{ q.sku or '' }}" required></div><div><label>Node</label><input type="text" name="node" value="{{ q.node or '' }}" required></div><div><label>Quantity</label><input type="number" name="qty" value="{{ q.qty or '' }}" required></div><div><label>Min days remaining</label><input type="number" name="min_days" value="0"></div><div><button class="btn primary">Plan pick</button></div></form>
+{% if pick %}<p class="small">Picked <b>{{ pick.picked|num }}</b>, short <b>{{ pick.short|num }}</b></p>
+{{ table('pick', [{'k':'lot_no','l':'Lot'},{'k':'qty','l':'Qty','t':'num'},{'k':'expiry','l':'Expiry','t':'date'}], pick.picks, group=false, export=false) }}
+{% if pick.skipped %}<p class="small muted">Skipped (ineligible): {% for s in pick.skipped %}{{ s.lot_no }} ({{ s.reason }}){{ ', ' if not loop.last }}{% endfor %}</p>{% endif %}{% endif %}</section></div>
+<div class="card">{{ table('expiry', [{'k':'sku','l':'SKU','t':'link','href':'/inventory/sku/{sku}'},{'k':'node','l':'Node'},{'k':'lot','l':'Lot','t':'link','href':'/inventory/trace?lot={lot}'},{'k':'qty','l':'Qty','t':'num'},{'k':'state','l':'State','t':'badge'},{'k':'quality','l':'Quality','t':'badge'},{'k':'expiry','l':'Expiry','t':'date'},{'k':'dte','l':'Days to expiry','t':'num'},{'k':'pct','l':'% shelf life left','t':'pct','d':0},{'k':'status','l':'Status','t':'badge'},{'k':'value','l':'Value','t':'money'}], rows, name='expiry') }}</div>
+{% endblock %}

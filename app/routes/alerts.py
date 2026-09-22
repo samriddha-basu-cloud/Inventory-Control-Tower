@@ -1,141 +1,106 @@
-import json
-from flask import Blueprint, render_template, request, redirect, url_for, flash
+"""Alert center and root-cause incidents."""
+from __future__ import annotations
 
-from app.extensions import db
-from app.models import Alert, Incident, Recommendation, Approval, Execution
-from app.services import alert_service
+from collections import Counter
 
-bp = Blueprint("alerts", __name__, url_prefix="/exceptions")
+from flask import Blueprint, abort, render_template, request
+
+from ..extensions import db
+from ..models import Alert, AuditLog, Incident, Recommendation
+from ..services import alert_service
+from ..utils.security import require
+from . import helpers as H
+
+bp = Blueprint("alerts", __name__)
+SEV = ["CRITICAL", "HIGH", "MEDIUM", "LOW"]
 
 
-@bp.route("/")
-def workbench():
-    severity = request.args.get("severity")
-    alert_type = request.args.get("type")
-    status = request.args.get("status")
+@bp.route("/alerts")
+def list_alerts():
+    view = request.args.get("view", "unresolved")
+    sev, atype, show_sup = request.args.get("sev"), request.args.get("type"), request.args.get("suppressed") == "1"
     q = Alert.query
-    if severity:
-        q = q.filter_by(severity=severity)
-    if alert_type:
-        q = q.filter_by(alert_type=alert_type)
-    if status:
-        q = q.filter_by(status=status)
-    else:
-        q = q.filter(Alert.status.notin_(["CLOSED"]))
-    alerts = q.order_by(Alert.severity, Alert.financial_impact.desc()).limit(200).all()
-    counts = alert_service.priority_counts()
-    return render_template("alerts/workbench.html", alerts=alerts, counts=counts,
-                            severity=severity, alert_type=alert_type, status=status)
+    if view in ("unresolved", "mine", "root", "financial", "service"):
+        q = q.filter(Alert.status.in_(alert_service.OPEN_STATUSES))
+    if not show_sup:
+        q = q.filter(Alert.suppressed.is_(False))
+    if view == "mine":
+        q = q.filter(Alert.owner == H.role())
+    if view == "root":
+        q = q.filter(Alert.incident_id.isnot(None))
+    if sev:
+        q = q.filter(Alert.severity == sev)
+    if atype:
+        q = q.filter(Alert.alert_type == atype)
+    alerts = q.order_by(Alert.priority_score.desc()).limit(600).all()
+    if view == "financial":
+        alerts.sort(key=lambda a: -max((a.impact or {}).get("value_at_risk", 0), (a.impact or {}).get("revenue_at_risk", 0)))
+    if view == "service":
+        alerts.sort(key=lambda a: -((a.impact or {}).get("service_impact", 0)))
+    rows = [{"id": a.id, "no": a.alert_no, "sev": a.severity, "type": a.alert_type.replace("_", " ").title(), "title": a.title, "status": a.status, "pri": a.priority_score, "owner": a.owner, "when": a.first_seen,
+             "value": max((a.impact or {}).get("value_at_risk", 0), (a.impact or {}).get("revenue_at_risk", 0)), "svc": (a.impact or {}).get("service_impact", 0), "tti": a.time_to_impact_days,
+             "incident": a.incident.incident_no if a.incident else "", "inc_id": a.incident_id, "esc": "Escalated" if a.escalated else "", "occ": a.occurrences} for a in alerts]
+    counts = Counter(a.severity for a in Alert.query.filter(Alert.status.in_(alert_service.OPEN_STATUSES), Alert.suppressed.is_(False)).all())
+    types = sorted({a.alert_type for a in Alert.query.all()})
+    return render_template("alerts/list.html", rows=rows, view=view, counts=counts, sev=sev, atype=atype, types=types, show_sup=show_sup, statuses=alert_service.STATUSES,
+                           suppressed=Alert.query.filter_by(suppressed=True).count(), weights=alert_service.S.get("weights.priority"))
 
 
-@bp.route("/generate", methods=["POST"])
-def generate():
-    result = alert_service.generate_alerts()
-    flash(f"{result['alerts_generated']} alerts generated, {result['incidents_created']} incident(s) created.",
-          "success")
-    return redirect(url_for("alerts.workbench"))
-
-
-@bp.route("/incidents")
-def incidents():
-    rows = Incident.query.order_by(Incident.financial_impact.desc()).all()
-    return render_template("alerts/incidents.html", incidents=rows)
-
-
-@bp.route("/incidents/<int:incident_id>")
-def incident_detail(incident_id):
-    incident = Incident.query.get_or_404(incident_id)
-    related_alerts = Alert.query.filter_by(incident_id=incident.id).all()
-    return render_template("alerts/incident_detail.html", incident=incident, related_alerts=related_alerts)
+@bp.route("/alerts/<int:alert_id>")
+def alert_detail(alert_id):
+    a = Alert.query.get_or_404(alert_id)
+    recs = Recommendation.query.filter_by(alert_id=a.id).all()
+    audit = AuditLog.query.filter_by(entity_type="Alert", entity_id=str(a.id)).order_by(AuditLog.id.desc()).limit(20).all()
+    return render_template("alerts/detail.html", a=a, ex=alert_service.explain(a), recs=recs, audit=audit, statuses=alert_service.STATUSES)
 
 
 @bp.route("/alerts/<int:alert_id>/status", methods=["POST"])
-def update_alert_status(alert_id):
-    alert = Alert.query.get_or_404(alert_id)
-    new_status = request.form.get("status")
-    if new_status in ("NEW", "INVESTIGATING", "ACTION_REQUIRED", "APPROVED", "EXECUTING", "RESOLVED", "CLOSED"):
-        alert.status = new_status
-        from datetime import datetime
-        if new_status in ("RESOLVED", "CLOSED"):
-            alert.resolved_at = datetime.utcnow()
+@require("alert_manage")
+def alert_status(alert_id):
+    try:
+        alert_service.set_status(alert_id, request.form.get("status", ""), H.actor(), request.form.get("note"))
         db.session.commit()
-        flash(f"Alert #{alert.id} marked {new_status}.", "success")
-    return redirect(url_for("alerts.workbench"))
+        H.ok("Alert status updated and recorded in the audit trail.")
+    except ValueError as e:
+        db.session.rollback()
+        H.err(str(e))
+    return H.back("alerts.list_alerts")
 
 
-# --- Recommendations / approval workflow (sections 80-86) ---------------------
-
-@bp.route("/recommendations")
-def recommendations():
-    status = request.args.get("status", "PENDING")
-    q = Recommendation.query
-    if status:
-        q = q.filter_by(status=status)
-    recs = q.order_by(Recommendation.cost_estimate.desc()).all()
-    for r in recs:
-        r.reason = json.loads(r.reason_json) if r.reason_json else {}
-        r.expected_impact = json.loads(r.expected_impact_json) if r.expected_impact_json else {}
-    return render_template("alerts/recommendations.html", recs=recs, status=status)
+@bp.route("/root-cause")
+def incidents():
+    incs = Incident.query.filter(Incident.status.notin_(["Resolved", "Dismissed"])).order_by(Incident.priority_score.desc()).all()
+    closed = Incident.query.filter(Incident.status.in_(["Resolved", "Dismissed"])).order_by(Incident.id.desc()).limit(20).all()
+    rows = [{"id": i.id, "no": i.incident_no, "title": i.title, "sev": i.severity, "status": i.status, "cause": i.cause_type.replace("_", " ").title() if i.cause_type else "", "pri": i.priority_score,
+             "alerts": i.impact.get("alerts"), "skus": len(i.impact.get("affected_skus", [])), "nodes": len(i.impact.get("affected_nodes", [])), "rev": i.impact.get("revenue_at_risk"),
+             "prod": i.impact.get("production_at_risk"), "svc": i.impact.get("service_impact"), "inv": i.impact.get("inventory_impact"), "owner": i.owner, "root": i.root_cause} for i in incs]
+    open_alerts = Alert.query.filter(Alert.status.in_(alert_service.OPEN_STATUSES), Alert.suppressed.is_(False)).count()
+    clustered = Alert.query.filter(Alert.incident_id.isnot(None), Alert.status.in_(alert_service.OPEN_STATUSES)).count()
+    return render_template("alerts/incidents.html", rows=rows, closed=closed, open_alerts=open_alerts, clustered=clustered)
 
 
-@bp.route("/recommendations/<int:rec_id>/decide", methods=["POST"])
-def decide_recommendation(rec_id):
-    rec = Recommendation.query.get_or_404(rec_id)
-    decision = request.form.get("decision")  # APPROVE|REJECT|ESCALATE
-    reason = request.form.get("reason", "")
-    decided_by = request.form.get("decided_by", "planner@demo.org")
+@bp.route("/root-cause/<int:incident_id>")
+def incident_detail(incident_id):
+    i = Incident.query.get_or_404(incident_id)
+    alerts = sorted(i.alerts, key=lambda a: -a.priority_score)
+    recs = Recommendation.query.filter(Recommendation.alert_id.in_([a.id for a in alerts])).order_by(Recommendation.priority_score.desc()).all()
+    return render_template("alerts/incident_detail.html", i=i, alerts=alerts, recs=recs, statuses=["New", "Acknowledged", "Investigating", "Action Proposed", "Approved", "Executed", "Resolved", "Dismissed"])
 
-    db.session.add(Approval(recommendation_id=rec.id, decision=decision, reason=reason, decided_by=decided_by))
 
-    if decision == "APPROVE":
-        rec.status = "APPROVED"
-        # Guardrail: autonomy level 3 (auto-execute) only below a configured threshold.
-        auto_threshold = 50000
-        mode = "SIMULATED"
-        if rec.cost_estimate is not None and rec.cost_estimate <= auto_threshold and rec.autonomy_level >= 3:
-            result = "SUCCESS"
-            detail = "Auto-executed within guardrail threshold (simulation mode - no live ERP/WMS connector configured)."
-        else:
-            result = "PENDING_EXECUTION"
-            detail = "Approved. Awaiting execution step (simulation mode)."
-        db.session.add(Execution(recommendation_id=rec.id, mode=mode, result=result, detail=detail))
-        rec.status = "EXECUTED" if result == "SUCCESS" else "APPROVED"
-    elif decision == "REJECT":
-        rec.status = "REJECTED"
-    elif decision == "MODIFY":
-        rec.status = "MODIFIED"
-    else:
-        rec.status = "PENDING"
-
+@bp.route("/root-cause/<int:incident_id>/status", methods=["POST"])
+@require("alert_manage")
+def incident_status(incident_id):
+    i = Incident.query.get_or_404(incident_id)
+    st = request.form.get("status", "")
+    if st not in ["New", "Acknowledged", "Investigating", "Action Proposed", "Approved", "Executed", "Resolved", "Dismissed"]:
+        abort(400, "Unknown status")
+    from ..services import audit_service
+    audit_service.log("ACTION", "Incident", i.incident_no, "incident_status", {"from": i.status, "to": st, "note": request.form.get("note")}, actor=H.actor())
+    i.status = st
+    if request.form.get("cascade"):
+        for a in i.alerts:
+            if a.status in alert_service.OPEN_STATUSES:
+                a.status = st if st in alert_service.STATUSES else a.status
     db.session.commit()
-    flash(f"Recommendation #{rec.id}: {decision}.", "success")
-    return redirect(url_for("alerts.recommendations"))
-
-
-@bp.route("/recommendations/<int:rec_id>/execute", methods=["POST"])
-def execute_recommendation(rec_id):
-    rec = Recommendation.query.get_or_404(rec_id)
-    if rec.status != "APPROVED":
-        flash("Only approved recommendations can be executed.", "warning")
-        return redirect(url_for("alerts.recommendations"))
-
-    # Execution safety validation (section 147) - re-check supply availability before executing.
-    from app.services import inventory_service
-    blocked_reason = None
-    if rec.rec_type == "transfer" and rec.source_location_id:
-        avail = inventory_service.available_quantity(rec.item_id, rec.source_location_id)
-        if rec.quantity and avail < rec.quantity:
-            blocked_reason = (f"Source location availability ({avail:.0f}) has fallen below the "
-                               f"recommended transfer quantity ({rec.quantity:.0f}) since approval.")
-
-    if blocked_reason:
-        db.session.add(Execution(recommendation_id=rec.id, mode="SIMULATED", result="BLOCKED", detail=blocked_reason))
-        db.session.commit()
-        flash(f"Execution blocked: {blocked_reason}", "danger")
-    else:
-        db.session.add(Execution(recommendation_id=rec.id, mode="SIMULATED", result="SUCCESS",
-                                  detail="Simulated execution completed (no live ERP/WMS/TMS connector configured)."))
-        rec.status = "EXECUTED"
-        db.session.commit()
-        flash(f"Recommendation #{rec.id} executed (simulation mode).", "success")
-    return redirect(url_for("alerts.recommendations"))
+    H.ok(f"Incident {i.incident_no} → {st}.")
+    return H.back("alerts.incidents")

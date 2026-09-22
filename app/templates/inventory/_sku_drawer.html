@@ -1,0 +1,5 @@
+{% from '_macros.html' import badge, table %}
+<h2>{{ it.sku }}</h2><p class="muted">{{ it.description }}</p>
+<dl class="kv"><dt>Category</dt><dd>{{ it.category }} / {{ it.family_code }}</dd><dt>Unit cost</dt><dd>{{ it.unit_cost|money }}</dd><dt>MOQ / multiple</dt><dd>{{ it.moq|num }} / {{ it.order_multiple|num }}</dd><dt>Criticality</dt><dd>{{ it.criticality }}</dd></dl>
+{{ table('drawer-tbl', [{'k':'node','l':'Node','t':'link','href':'/inventory/location/{node}'},{'k':'on_hand','l':'On hand','t':'num'},{'k':'available','l':'Avail.','t':'num'},{'k':'position','l':'Position','t':'num'},{'k':'days_supply','l':'DOS','t':'num','d':1},{'k':'risk','l':'Risk','t':'badge'}], rows, group=false, export=false) }}
+<p><a class="btn primary" href="{{ url_for('inventory.sku360', sku=it.sku) }}">Open SKU 360 →</a></p>

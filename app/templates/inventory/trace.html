@@ -1,0 +1,19 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}Traceability{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Lot / batch / serial traceability</h1><p>Backward and forward genealogy: <b>Supplier → Receipt → Warehouse → Production → Customer</b>, including expiry and returns.</p></div>
+<form method="get" class="form-grid"><div><label>Lot / batch number</label><input type="text" name="lot" value="{{ q }}" placeholder="e.g. TRACE-FG-PHA-01" required></div><div><button class="btn primary">Trace</button></div></form></div>
+{% if sample and not tr %}<div class="card"><p>Try a demo genealogy: {% for s in sample %}<a class="btn sm" href="?lot={{ s }}">{{ s }}</a> {% endfor %}</p></div>{% endif %}
+{% macro node(t, depth) %}
+<div class="card" style="margin-left:{{ depth*22 }}px;margin-bottom:12px">
+ <div class="card-head"><div><h2>{{ 'Backward' if depth < 0 else '' }} Lot {{ t.lot }} · {{ t.sku }}</h2><div class="sub">{{ t.description }}</div></div><div>{{ badge(t.quality) }}</div></div>
+ <div class="flow">{% for c in t.chain %}<span class="node">{{ c }}</span>{{ '<span class="arrow">→</span>'|safe if not loop.last }}{% endfor %}</div>
+ <dl class="kv"><dt>Supplier</dt><dd>{{ t.supplier or '–' }}</dd><dt>Manufactured</dt><dd>{{ t.manufactured|dt }}</dd><dt>Received</dt><dd>{{ t.received|dt }}</dd><dt>Expiry</dt><dd>{{ t.expiry|dt }}</dd><dt>Customers reached</dt><dd>{{ t.customers|join(', ') or '–' }}</dd><dt>Current stock</dt><dd>{% for s in t.stock %}{{ s.location }} {{ s.qty|num }} ({{ s.state }}){{ ', ' if not loop.last }}{% else %}none{% endfor %}</dd>{% if t.serials %}<dt>Serials</dt><dd>{{ t.serials|join(', ') }}</dd>{% endif %}</dl>
+ {{ table('ev' ~ t.lot_id ~ '_' ~ depth, [{'k':'when','l':'When','t':'date','time':true},{'k':'stage','l':'Stage'},{'k':'type','l':'Type','t':'badge'},{'k':'qty','l':'Qty','t':'num'},{'k':'where','l':'Where'},{'k':'ref','l':'Reference'},{'k':'party','l':'Party'},{'k':'reason','l':'Reason'}], t.events, group=false, export=false) }}
+</div>
+{% for u in t.upstream %}<div class="small muted" style="margin-left:{{ (depth+1)*22 }}px">⬆ upstream input lot (consumed to make this lot)</div>{{ node(u, depth+1) }}{% endfor %}
+{% for d in t.downstream %}<div class="small muted" style="margin-left:{{ (depth+1)*22 }}px">⬇ downstream lot made from this lot</div>{{ node(d, depth+1) }}{% endfor %}
+{% endmacro %}
+{% if tr %}{{ node(tr, 0) }}{% endif %}
+{% endblock %}

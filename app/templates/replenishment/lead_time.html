@@ -1,0 +1,8 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge, plot %}
+{% block title %}Lead-time intelligence{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Lead-time intelligence</h1><p>Static master lead time is a <i>claim</i>; observed receipts are the <i>evidence</i>. A lognormal is fitted when at least {{ min_obs }} observations exist; P50/P75/P90/P95 are always reported. The configured basis (<b>{{ basis }}</b>, observed {{ 'ON' if use_obs else 'OFF' }}) feeds safety stock, ROP, ETA risk and replenishment.</p></div></div>
+<div class="card mb"><h2>Static vs observed by lane</h2>{{ plot(fig, 'ltcmp', 320) }}</div>
+<div class="card">{{ table('lt', [{'k':'lane','l':'Supplier / lane'},{'k':'n','l':'Receipts','t':'num'},{'k':'static','l':'Static (d)','t':'num','d':1},{'k':'mean','l':'Mean','t':'num','d':1},{'k':'median','l':'Median','t':'num','d':1},{'k':'std','l':'σ','t':'num','d':1},{'k':'p50','l':'P50','t':'num','d':1},{'k':'p75','l':'P75','t':'num','d':1},{'k':'p90','l':'P90','t':'num','d':1},{'k':'p95','l':'P95','t':'num','d':1},{'k':'gap','l':'P90 − static','t':'num','d':1,'tip':'How much longer than promised the slow tail is'},{'k':'dist','l':'Distribution'},{'k':'ks','l':'KS p','t':'num','d':2},{'k':'elig','l':'Model eligibility','t':'badge'}], rows, name='lead-time') }}</div>
+{% endblock %}

@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% from '_macros.html' import kpi, card, table, tip, badge %}
+{% block title %}Audit trail{% endblock %}
+{% block content %}
+<div class="page-head"><div><h1>Audit trail</h1><p>Append-only record of data loads, calculations (inputs, policy, formula, model, result), configuration changes, actions, approvals and executions.</p></div></div>
+<div class="card mb"><form method="get" class="form-grid"><div><label>Category</label><select name="category"><option value="">All</option>{% for c in cats %}<option {{ 'selected' if c == sel.category }}>{{ c }}</option>{% endfor %}</select></div><div><label>Entity type</label><select name="entity"><option value="">All</option>{% for c in ents %}<option {{ 'selected' if c == sel.entity }}>{{ c }}</option>{% endfor %}</select></div><div><label>Search id / event / actor</label><input type="search" name="q" value="{{ sel.q }}"></div><div><button class="btn primary">Filter</button></div></form></div>
+<div class="card">{% set ar = [] %}{% for a in rows %}{% set _ = ar.append({'when':a.timestamp,'actor':a.actor,'cat':a.category,'entity':a.entity_type ~ ' ' ~ a.entity_id,'event':a.event,'details':(a.details|tojson)[:300],'trace':'yes' if a.trace else ''}) %}{% endfor %}
+{{ table('audit', [{'k':'when','l':'When','t':'date','time':true},{'k':'actor','l':'Actor'},{'k':'cat','l':'Category','t':'badge'},{'k':'entity','l':'Entity'},{'k':'event','l':'Event'},{'k':'details','l':'Details'},{'k':'trace','l':'Calc trace'}], ar, name='audit') }}
+{% for a in rows if a.trace %}{% if loop.index <= 3 %}<details class="mt"><summary class="small">Calculation trace · {{ a.entity_type }} {{ a.entity_id }}</summary><pre class="mono small" style="white-space:pre-wrap;overflow:auto">{{ a.trace|tojson(indent=1) }}</pre></details>{% endif %}{% endfor %}</div>
+{% endblock %}

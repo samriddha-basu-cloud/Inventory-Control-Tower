@@ -1,52 +1,14 @@
-# User Guide
+# User guide
 
-## 1. Launch the demo
-
-Click **Launch Demo** in the top bar from any page. This loads a synthetic
-FMCG network (4 suppliers, plant, central DC, 3 regional DCs, 4 stores, 5
-customers, 24 SKUs, 90 days of demand history) with an injected
-supplier-delay disruption.
-
-## 2. The Control Tower dashboard
-
-Top-level KPIs (inventory value, available units, excess/obsolete value,
-turns/DIO), the FIT Health Index, open incidents, top alerts by financial
-impact, and pending recommendations. Everything here links deeper - click an
-incident to investigate it, click "Review & Approve" to act on
-recommendations.
-
-## 3. Walk the disruption story
-
-1. **Exceptions → Exception Workbench**, click "Regenerate Alerts" (also
-   auto-run once by Launch Demo). You'll see `stockout_risk`,
-   `safety_stock_breach`, `excess`, `expiry`, and `late_po` alerts.
-2. **Exceptions → Incidents**: the late POs from the injected disruption
-   supplier are clustered into one incident instead of dozens of separate
-   SKU alerts, with an observed root cause and financial impact.
-3. **Optimization → Rebalancing**: run it. Because the demo deliberately
-   seeds DC-NORTH with surplus and DC-SOUTH with a deficit for the
-   disrupted SKUs, you should see transfer recommendations between them.
-4. **Exceptions → Recommendations & Approvals**: approve a transfer
-   recommendation (shows why, expected impact, cost, confidence), then
-   execute it (simulated - no live WMS/TMS connector configured).
-
-## 4. Explore the analytics
-
-- **Inventory → ABC × XYZ Matrix**: network-wide segmentation with
-  per-segment policy suggestions.
-- **Inventory → Aging & Expiry**: aging buckets + near-expiry/expired
-  batches (FEFO-relevant).
-- **Network → Network Map / Heatmap**: Plotly-based visualizations, hover
-  for detail, switch heatmap metric (days of supply / value / stockout
-  risk).
-- **Optimization → MEIO**: compare single- vs multi-echelon safety stock -
-  read the per-SKU verdict, which can go either way (see
-  `docs/optimization.md`).
-- **Scenarios**: run a demand/lead-time/safety-stock what-if; it never
-  touches live data.
-
-## 5. Reports & API
-
-**Reports → Full Excel Export** downloads a multi-sheet workbook. The
-`/api/...` endpoints (see `docs/api.md`) give you the same data as JSON for
-scripting or integration testing.
+1. **Start** – open the app; on an empty database click **LOAD DEMO NETWORK** (choose industries). ~8 s for all seven.
+2. **Control Tower** – headline KPIs with status (icon + text), network map (colour *and* shape = risk), inventory-state cards, health index, critical incidents, recommended actions.
+   Global filter bar (date, region, BU, industry, SKU, family, location, supplier, customer, warehouse) persists across pages. Press `/` to search.
+3. **Understand** – *Inventory* (explorer → SKU 360 / Location 360 / Supplier 360), *ABC-XYZ*, *Aging*, *Expiry/FEFO*, *Ledger*, *Traceability* (`TRACE-FG-PHA-01`, `TRACE-FG-FMC-01`), *Reconciliation*.
+4. **Plan** – *Replenishment* (12 policies), *Safety stock* (8 methods, lead-time basis comparison), *Optimization* (MILP with visible objective; try a budget of 1000 to see infeasibility explained),
+   *Order pegging* (scarcity simulator), *Supply visibility*.
+5. **Risk** – *Risk center* (register, heatmaps by SKU/location/supplier/family/region), *Alerts* (views: unresolved, mine, root cause, financial, service), *Root cause* (incidents with 8-question explanation).
+6. **Simulate** – *Scenario Lab* (16 change types, 1-day/1-week/1-month steps), *Digital twin* (sandbox), *S&OP*, *Rebalancing*, *Experiments*.
+7. **Decide** – open a recommendation → options with constraint violations → **Create action** → simulation, policy check, autonomy decision → approve / reject / modify / escalate → mock execution → verification → audit.
+   Change the acting role in the top bar (demo mode) to see role limits; *Autonomy* configures levels and guardrails.
+8. **Configure** – *Settings* (engine, thresholds, weights, roles, KPI formulas, rules, inventory states), *Industry mode*, *Data hub* (uploads with preview, EDI translator, events).
+9. **Report** – *Reports* (11 reports + 18-sheet workbook; CSV/XLSX/PDF).

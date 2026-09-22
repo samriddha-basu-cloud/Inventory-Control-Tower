@@ -1,123 +1,143 @@
+"""Inventory Control Tower (ICT) - Flask application factory."""
+from __future__ import annotations
+
+import logging
 import os
-from flask import Flask, render_template
 
-from app.config import config_map
-from app.extensions import db
+import click
+from flask import Flask, g, jsonify, redirect, render_template, request, session, url_for
+from werkzeug.exceptions import HTTPException
+
+from .config import CONFIGS
+from .extensions import db, migrate
 
 
-def create_app(config_name=None):
+def create_app(config_name: str | None = None, register_routes: bool = True) -> Flask:
     config_name = config_name or os.environ.get("ENVIRONMENT", "development")
-    app = Flask(__name__, instance_relative_config=True)
-    app.config.from_object(config_map.get(config_name, config_map["development"]))
-
-    os.makedirs(app.instance_path, exist_ok=True)
+    cfg = CONFIGS.get(config_name, CONFIGS["development"])
+    app = Flask(__name__, instance_relative_config=False)
+    app.config.from_object(cfg() if config_name == "production" else cfg)
+    from .utils.jsonutil import ICTJSONProvider
+    app.json = ICTJSONProvider(app)
+    if config_name == "production" and not os.environ.get("SECRET_KEY"):
+        raise RuntimeError("SECRET_KEY environment variable is required in production")
+    os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
     db.init_app(app)
-
-    from app import models as _models  # noqa: F401 - ensures metadata is populated before create_all()
+    migrate.init_app(app, db, directory=os.path.join(os.path.dirname(os.path.dirname(__file__)), "migrations"))
+    from . import models  # noqa: F401  (register tables)
 
     with app.app_context():
-        db.create_all()
+        if app.config.get("AUTO_INIT_DB"):
+            db.create_all()
+            from .services.seed_service import seed_reference_data
+            seed_reference_data()
 
-    register_blueprints(app)
-    register_cli(app)
-    register_template_helpers(app)
-    register_error_handlers(app)
-
+    if register_routes:
+        _register_web(app)
+    _register_cli(app)
     return app
 
 
-def register_blueprints(app):
-    from app.routes.main import bp as main_bp
-    from app.routes.dashboard import bp as dashboard_bp
-    from app.routes.inventory import bp as inventory_bp
-    from app.routes.network import bp as network_bp
-    from app.routes.optimization import bp as optimization_bp
-    from app.routes.alerts import bp as alerts_bp
-    from app.routes.scenarios import bp as scenarios_bp
-    from app.routes.allocation import bp as allocation_bp
-    from app.routes.replenishment import bp as replenishment_bp
-    from app.routes.reports import bp as reports_bp
-    from app.routes.master_data import bp as master_data_bp
-    from app.routes.api import bp as api_bp
-
-    app.register_blueprint(main_bp)
-    app.register_blueprint(dashboard_bp)
-    app.register_blueprint(inventory_bp)
-    app.register_blueprint(network_bp)
-    app.register_blueprint(optimization_bp)
-    app.register_blueprint(alerts_bp)
-    app.register_blueprint(scenarios_bp)
-    app.register_blueprint(allocation_bp)
-    app.register_blueprint(replenishment_bp)
-    app.register_blueprint(reports_bp)
-    app.register_blueprint(master_data_bp)
-    app.register_blueprint(api_bp, url_prefix="/api")
+ALIASES = {"inventory.sku360": "inventory.explorer", "inventory.location360": "inventory.explorer", "inventory.supplier360": "inventory.explorer",
+           "alerts.alert_detail": "alerts.list_alerts", "alerts.incident_detail": "alerts.incidents", "risk.heatmap": "risk.center", "demand.chain": "demand.home",
+           "scenarios.sop": "scenarios.lab", "scenarios.scenario_detail": "scenarios.lab", "scenarios.compare": "scenarios.lab", "finance.circular": "finance.sustainability",
+           "actions.action_detail": "actions.center", "reports.view": "reports.home", "main.load_demo": "main.home"}
 
 
-def register_cli(app):
-    @app.cli.command("init-db")
-    def init_db():
-        """Create all database tables."""
-        with app.app_context():
-            db.create_all()
-        print("Database initialized.")
+def _register_web(app: Flask) -> None:
+    from .utils import fmt, security
+    from .routes import register_blueprints
 
-    @app.cli.command("load-demo")
-    def load_demo():
-        """Load synthetic demo network (FMCG-led multi-node scenario with a supplier-delay incident)."""
-        from app.services.demo_data_service import load_demo_data
+    register_blueprints(app)
+    app.jinja_env.globals["csrf_token"] = security.csrf_token
+    app.jinja_env.globals["has_perm"] = security.has_perm
 
-        with app.app_context():
-            db.create_all()
-            summary = load_demo_data(reset=True)
-            print(f"Demo data loaded: {summary}")
+    for name, fn in [("num", fmt.num), ("pct", fmt.pct), ("money", fmt.money), ("dt", fmt.dt), ("days", fmt.days), ("kpival", fmt.kpi_value)]:
+        app.jinja_env.filters[name] = fn
 
-
-def register_template_helpers(app):
-    from datetime import datetime
+    @app.before_request
+    def _security():
+        security.check_csrf()
+        security.load_user()
+        if app.config.get("AUTH_REQUIRED") and not g.user and request.endpoint not in ("main.login", "static", "main.health", "main.plotly_js"):
+            if request.path.startswith("/api/"):
+                return jsonify({"error": "authentication required"}), 401
+            return redirect(url_for("main.login", next=request.path))
 
     @app.context_processor
-    def inject_globals():
-        return {
-            "now": datetime.utcnow(),
-            "app_name": "Inventory Control Tower",
-            "app_short": "ICT",
-            "tagline": "See. Predict. Optimize. Execute.",
-        }
-
-    @app.template_filter("money")
-    def money_filter(value, currency="₹"):
+    def _inject():
+        from .services import settings_service as S, industry_service
+        from .routes.nav import NAV
+        from .routes import helpers
+        from .services.snapshot import PairFilter, get_snapshot
+        from .models import Action, Alert
+        ctx = {"NAV": NAV, "csrf_token": security.csrf_token, "user": getattr(g, "user", None), "has_perm": security.has_perm, "terms": {}, "industry_name": "General",
+               "gfilter": PairFilter.from_mapping(session.get("filters", {})), "current_path": request.path, "currency": app.config["CURRENCY_SYMBOL"],
+               "auth_required": app.config["AUTH_REQUIRED"], "roles": list(security.ROLE_RANK), "facets": {}, "freshness_score": None, "freshness_note": "", "nav_alerts": 0,
+               "nav_actions": 0, "exec_mode": "SIMULATION_ONLY", "as_of": "", "data_ver": "", "active_ep": request.endpoint}
         try:
-            value = float(value)
-        except (TypeError, ValueError):
-            return value
-        if abs(value) >= 10_000_000:
-            return f"{currency}{value/10_000_000:,.2f}Cr"
-        if abs(value) >= 100_000:
-            return f"{currency}{value/100_000:,.2f}L"
-        return f"{currency}{value:,.0f}"
+            prof = industry_service.active_profile()
+            ctx["terms"] = (prof.terminology or {}) if prof else {}
+            ctx["industry_name"] = prof.name if prof else "General"
+            ctx["exec_mode"] = S.get("execution.mode")
+            ctx["as_of"] = S.today().isoformat()
+            ctx["data_ver"] = "%s.%s" % S.data_version()
+            if helpers.has_data():
+                sn = get_snapshot()
+                ctx["facets"] = helpers.facets(sn)
+                ctx["freshness_score"], ctx["freshness_note"] = sn.freshness["score"], sn.freshness["note"]
+            ctx["nav_alerts"] = Alert.query.filter(Alert.status.in_(["New", "Acknowledged", "Investigating", "Action Proposed"]), Alert.suppressed.is_(False),
+                                                   Alert.severity.in_(["HIGH", "CRITICAL"])).count()
+            ctx["nav_actions"] = Action.query.filter(Action.status.in_(["PENDING_APPROVAL", "ESCALATED"])).count()
+        except Exception:  # pragma: no cover - never let chrome data break a page
+            app.logger.exception("context processor failed")
+        eps = {ep for grp in NAV for _, ep, _ in grp["items"]}
+        ep = request.endpoint or ""
+        if ep not in eps:
+            alias = ALIASES.get(ep)
+            if not alias:
+                bp = ep.split(".")[0]
+                alias = next((e for e in sorted(eps) if e.split(".")[0] == bp), ep)
+            ep = alias
+        ctx["active_ep"] = ep
+        return ctx
 
-    @app.template_filter("num")
-    def num_filter(value):
+    @app.errorhandler(Exception)
+    def _errors(e):
+        if isinstance(e, HTTPException):
+            code, msg = e.code, e.description
+        else:
+            app.logger.exception("Unhandled error")
+            code, msg = 500, "Something went wrong while processing your request. The error has been logged."
+        if request.path.startswith("/api/"):
+            return jsonify({"error": msg, "status": code}), code
         try:
-            return f"{float(value):,.0f}"
-        except (TypeError, ValueError):
-            return value
-
-    @app.template_filter("pct")
-    def pct_filter(value, digits=1):
-        try:
-            return f"{float(value):.{digits}f}%"
-        except (TypeError, ValueError):
-            return value
+            return render_template("errors/error.html", code=code, message=msg), code
+        except Exception:  # pragma: no cover
+            return f"{code}: {msg}", code
 
 
-def register_error_handlers(app):
-    @app.errorhandler(404)
-    def not_found(e):
-        return render_template("errors/404.html"), 404
+def _register_cli(app: Flask) -> None:
+    @app.cli.command("init-db")
+    def init_db():
+        """Create tables and seed reference/configuration data."""
+        from .services.seed_service import seed_reference_data
+        db.create_all()
+        click.echo(f"Seeded: {seed_reference_data()}")
 
-    @app.errorhandler(500)
-    def server_error(e):
-        return render_template("errors/500.html"), 500
+    @app.cli.command("load-demo")
+    @click.option("--industries", default="ALL", help="Comma list of industries or ALL")
+    @click.option("--seed", default=42)
+    def load_demo(industries, seed):
+        """Load the synthetic demo network."""
+        from .services import demo_service
+        from .services.demo_specs import SPECS
+        inds = list(SPECS) if industries.upper() == "ALL" else [x.strip().upper() for x in industries.split(",")]
+        click.echo(demo_service.load_demo(inds, seed=seed))
+
+    @app.cli.command("run-detection")
+    def run_detection():
+        from .services import alert_service
+        click.echo(alert_service.run_detection(actor="cli"))

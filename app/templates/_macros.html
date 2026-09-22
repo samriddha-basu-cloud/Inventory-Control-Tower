@@ -1,0 +1,95 @@
+{# Shared UI macros. Status is always rendered as icon + text + colour (never colour alone). #}
+{% set ICONS = {'NORMAL':'✓','LOW':'✓','OK':'✓','RELEASED':'✓','MATCH':'✓','FRESH':'✓','VERIFIED':'✓','FEASIBLE':'✓','RECOMMENDED':'✓','DONE':'✓',
+  'WATCH':'◔','MEDIUM':'◔','NEAR':'◔','WITHIN_TOLERANCE':'◔','TIMING':'◔','POSSIBLE':'◔','PENDING_APPROVAL':'◔','New':'●','STALE':'◔','PROPOSED':'◔',
+  'ATTENTION':'▲','HIGH':'▲','VARIANCE':'▲','QUARANTINE':'▲','ESCALATED':'▲','DELAYED':'▲',
+  'CRITICAL':'✖','EXPIRED':'✖','REJECTED':'✖','FAILED':'✖','NEVER_AUTO':'⛔','MISSING_IN_ICT':'✖','MISSING_IN_SOURCE':'✖','NEGATIVE':'✖','INFEASIBLE':'✖','BLOCKED':'✖','NOT_RECOMMENDED':'✖','DUPLICATE':'✖','UNIT_MISMATCH':'✖','LOCATION_MISMATCH':'✖',
+  'MOCK':'◇','SIMULATED':'◇','OBSERVED':'◇','APPROVED':'✔','EXECUTED':'✔','Acknowledged':'◉','Investigating':'◉','NODATA':'–','Dismissed':'–','Resolved':'✓','CANCELLED':'–','INFO':'ℹ'} %}
+
+{% macro badge(status, label=None) -%}
+{%- if status is none or status == '' -%}<span class="muted">–</span>{%- else -%}
+<span class="badge {{ status|replace(' ','_') }}" title="{{ status }}"><span aria-hidden="true">{{ ICONS.get(status|replace(' ','_'), '•') }}</span> {{ label or (status|replace('_',' ')|title if status.isupper() else status) }}</span>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro tip(text) -%}<span class="tip" tabindex="0" role="note" aria-label="{{ text }}" data-tip="{{ text }}">?</span>{%- endmacro %}
+
+{% macro kpi(label, value, sub='', status=None, tip_text=None, href=None) -%}
+{% if href %}<a class="kpi" href="{{ href }}"{% if status %} data-status="{{ status }}"{% endif %}>{% else %}<div class="kpi"{% if status %} data-status="{{ status }}"{% endif %}>{% endif %}
+  <div class="lab"><span>{{ label }}</span>{% if tip_text %}{{ tip(tip_text) }}{% endif %}</div>
+  <div class="val">{{ value }}</div>
+  <div class="sub">{% if status and status != 'NODATA' %}{{ badge(status) }} {% endif %}{{ sub }}</div>
+{% if href %}</a>{% else %}</div>{% endif %}
+{%- endmacro %}
+
+{% macro card(title, sub='', tip_text=None) -%}
+<section class="card">
+  <div class="card-head"><div><h2>{{ title }} {% if tip_text %}{{ tip(tip_text) }}{% endif %}</h2>{% if sub %}<div class="sub">{{ sub }}</div>{% endif %}</div><div>{{ caller_actions if caller_actions is defined else '' }}</div></div>
+  {{ caller() }}
+</section>
+{%- endmacro %}
+
+{% macro plot(fig, id, height=300, table=None) -%}
+<div id="{{ id }}-box">
+  <div class="plot loading" id="{{ id }}" data-fig="{{ fig|tojson|forceescape }}" style="min-height:{{ height or 300 }}px" role="img" aria-label="Chart {{ id }}"></div>
+</div>
+{%- endmacro %}
+
+{% macro cell(c, r) -%}
+{%- set v = r[c.k] if c.k in r else none -%}
+{%- set t = c.get('t','text') -%}
+{%- if t == 'html' -%}<td>{{ v|safe if v is not none else '' }}</td>
+{%- elif t == 'badge' -%}<td data-sort="{{ v }}">{{ badge(v) }}</td>
+{%- elif t == 'num' -%}<td class="num" data-sort="{{ v if v is not none else '' }}">{{ v|num(c.get('d',0)) if v is not none else '–' }}</td>
+{%- elif t == 'money' -%}<td class="num" data-sort="{{ v if v is not none else '' }}">{{ v|money if v is not none else '–' }}</td>
+{%- elif t == 'pct' -%}<td class="num" data-sort="{{ v if v is not none else '' }}">{{ v|pct(c.get('d',1)) if v is not none else '–' }}</td>
+{%- elif t == 'days' -%}<td class="num" data-sort="{{ v if v is not none else '' }}">{{ v|days if v is not none else '–' }}</td>
+{%- elif t == 'date' -%}<td data-sort="{{ v.isoformat() if v and v.isoformat is defined else v }}">{{ v|dt(c.get('time', false)) }}</td>
+{%- elif t == 'link' -%}<td data-sort="{{ v }}">{% if v is not none %}<a href="{{ c.href|rowfmt(r) }}"{% if c.get('drawer') %} data-drawer="{{ c.drawer|rowfmt(r) }}"{% endif %}>{{ v }}</a>{% endif %}</td>
+{%- elif t == 'bar' -%}<td data-sort="{{ v if v is not none else 0 }}" class="nowrap"><span class="bar-cell" style="width:{{ (((v or 0) / c.get('max', 1)) * 60)|round(0)|int }}px"></span> <span class="small">{{ v|pct(0) if v is not none else '–' }}</span></td>
+{%- else -%}<td data-sort="{{ v if v is not none else '' }}">{{ v if v is not none else '–' }}</td>
+{%- endif -%}
+{%- endmacro %}
+
+{% macro table(id, cols, rows, name='table', search=true, group=true, export=true, row_href=None, empty='No records match the current filters.', maxrows=None) -%}
+<div class="tbl" id="{{ id }}-wrap">
+  <div class="tbl-tools">
+    {% if search %}<input type="search" placeholder="Search this table…" aria-label="Search table">{% endif %}
+    {% if group %}<label class="inline small muted">Group by <select class="group-by" aria-label="Group rows by"><option value="">none</option>{% for c in cols %}{% if c.get('t','text') in ('text','link','badge') %}<option value="{{ loop.index0 }}">{{ c.l }}</option>{% endif %}{% endfor %}</select></label>{% endif %}
+    {% if export %}<button type="button" class="btn sm" data-export>⇩ CSV</button>{% endif %}
+    <span class="count"></span>
+  </div>
+  <div class="tbl-wrap">
+  <table class="dt" id="{{ id }}" data-name="{{ name }}">
+    <thead><tr>{% for c in cols %}<th class="{{ 'num' if c.get('t') in ('num','money','pct','days') }}">{{ c.l }}{% if c.get('tip') %} {{ tip(c.tip) }}{% endif %}</th>{% endfor %}</tr></thead>
+    <tbody>
+    {% for r in (rows[:maxrows] if maxrows else rows) %}
+      <tr{% if row_href %} data-href="{{ row_href|rowfmt(r) }}"{% endif %}>{% for c in cols %}{{ cell(c, r) }}{% endfor %}</tr>
+    {% else %}
+      <tr><td colspan="{{ cols|length }}" class="muted" style="padding:22px;text-align:center">{{ empty }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+{%- endmacro %}
+
+{% macro tabs(items, active) -%}
+<nav class="tabs" aria-label="Section tabs">{% for label, url, key in items %}<a href="{{ url }}" class="{{ 'active' if key == active }}">{{ label }}</a>{% endfor %}</nav>
+{%- endmacro %}
+
+{% macro explain(rows, title='Decision explainer') -%}
+<table class="dt explain" data-name="explainer" style="min-width:340px"><thead><tr><th>Input</th><th class="num">Value</th><th>How it is derived</th></tr></thead><tbody>
+{% for label, val, how in rows %}<tr><td>{{ label }}</td><td class="v">{% if val is number %}{{ val|num(1 if (val|abs) < 100 and val != val|int else 0) }}{% else %}{{ val if val is not none else '–' }}{% endif %}</td><td class="small muted">{{ how }}</td></tr>{% endfor %}
+</tbody></table>
+{%- endmacro %}
+
+{% macro empty_state(msg='No data is loaded yet.') -%}
+<div class="card empty"><h2>{{ msg }}</h2><p>Load the synthetic demo network to explore every module, or import your own data in the Data Hub.</p>
+<form method="post" action="{{ url_for('main.load_demo') }}" style="display:inline"><input type="hidden" name="csrf_token" value="{{ csrf_token() }}"><button class="btn primary">Load demo network</button></form>
+<a class="btn" href="{{ url_for('datahub.home') }}">Open Data Hub</a></div>
+{%- endmacro %}
+
+{% macro post_button(url, label, cls='btn', confirm=None, fields=None) -%}
+<form method="post" action="{{ url }}" style="display:inline"{% if confirm %} data-confirm="{{ confirm }}"{% endif %}><input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+{% for k, v in (fields or {}).items() %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}<button class="{{ cls }}">{{ label }}</button></form>
+{%- endmacro %}
