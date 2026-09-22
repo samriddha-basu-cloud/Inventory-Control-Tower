@@ -11,5 +11,5 @@ openpyxl==3.1.5
 reportlab==5.0.1
 gunicorn==22.0.0
 Werkzeug==3.0.3
-# PostgreSQL in production (optional locally):
-# psycopg2-binary==2.9.9
+# PostgreSQL driver (required whenever DATABASE_URL points at Postgres, e.g. Render):
+psycopg2-binary==2.9.9
